@@ -1,6 +1,5 @@
 """Data models for the NeuralTuner environment.
 
-"""
 Data models for the NeuralTuner environment.
 
 NeuralTunerAction drives five operations an LLM agent can take:

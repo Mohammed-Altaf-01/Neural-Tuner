@@ -1,6 +1,6 @@
 """NeuralTuner environment client.
 
-"""NeuralTuner Environment Client."""
+NeuralTuner Environment Client."""
 
 from typing import Dict, Optional
 
@@ -18,7 +18,7 @@ class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, Neural
     enabling efficient multi-step LLM-agent rollouts.
 
     Example:
-        >>> with NeuralTunerEnv(base_url="http://localhost:8000") as env:
+        >>> with NeuralTunerEnv(base_url='http://localhost:8000') as env:
         ...     result = env.reset()
         ...     print(result.observation.output)
         ...

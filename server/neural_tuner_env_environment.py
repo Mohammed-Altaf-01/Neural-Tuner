@@ -355,8 +355,6 @@ class NeuralTunerEnvironment(Environment):
             f"{'0.10 PASS' if r['all_constraints_met'] else '0.00'}\n"
         )
 
-    # ── helpers ────────────────────────────────────────────────────────────
-
     def _require_layer(self, layer_id: Optional[str]) -> Optional[NeuralTunerObservation]:
         if not layer_id:
             return NeuralTunerObservation(
