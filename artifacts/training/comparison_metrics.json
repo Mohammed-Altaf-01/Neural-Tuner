@@ -4,5 +4,5 @@
   "pre_training_random_min": 0.2649,
   "pre_training_random_max": 0.7668,
   "oracle_ceiling": 0.6428,
-  "train_loss_final": 0.0
+  "train_loss_final": 0.2836594581604004
 }

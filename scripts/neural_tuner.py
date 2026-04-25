@@ -173,7 +173,8 @@ class NeuralTunerOpenEnv:
         """
         return self._step("submit")
 
-    def consume_reward_components(self) -> dict:
+    def _consume_reward_components(self) -> dict:
+        """Internal helper: return and reset pending shaping components."""
         components = {
             "benchmark_delta_reward": float(self._pending_benchmark_delta),
             "action_quality_reward": float(self._pending_action_quality),
