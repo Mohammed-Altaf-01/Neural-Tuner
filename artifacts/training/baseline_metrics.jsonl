@@ -1,0 +1,2 @@
+{"policy": "baseline", "episode_index": 0, "model_id": "inception_v3", "difficulty": "medium", "final_reward": 0.786, "done": true, "step_count": 10, "benchmark_count": 1, "latency_ms": 64.18, "memory_mb": 40.01, "accuracy_retention": 0.9663, "constraints_met": true}
+{"policy": "heuristic", "episode_index": 0, "model_id": "inception_v3", "difficulty": "medium", "final_reward": 0.6428, "done": true, "step_count": 14, "benchmark_count": 1, "latency_ms": 93.77, "memory_mb": 77.11, "accuracy_retention": 0.9785, "constraints_met": false}

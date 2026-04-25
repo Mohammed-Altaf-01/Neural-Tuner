@@ -33,8 +33,12 @@ try:
 except Exception as e:
     raise ImportError("openenv is required for the web interface. Install dependencies with '\n    uv sync\n'") from e
 
-from models import NeuralTunerAction, NeuralTunerObservation
-from server.neural_tuner_env_environment import NeuralTunerEnvironment
+try:
+    from ..models import NeuralTunerAction, NeuralTunerObservation
+    from .neural_tuner_env_environment import NeuralTunerEnvironment
+except ImportError:  # pragma: no cover - fallback for repo-root execution
+    from models import NeuralTunerAction, NeuralTunerObservation
+    from server.neural_tuner_env_environment import NeuralTunerEnvironment
 
 app = create_app(
     NeuralTunerEnvironment,

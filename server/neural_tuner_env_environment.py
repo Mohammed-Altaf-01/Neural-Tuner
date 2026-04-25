@@ -23,12 +23,22 @@ Episode flow:
 from typing import Dict, Optional, Set
 from uuid import uuid4
 
-from openenv.core.env_server.interfaces import Environment
+try:
+    from openenv.core.env_server.interfaces import Environment
+except ImportError:  # pragma: no cover - allow local testing without openenv
+    class Environment:  # type: ignore[override]
+        pass
 
-from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
-from server.model_zoo import get_layers, get_metadata
-from server.scenarios import Scenario, sample_scenario
-from server.simulator import HardwareSimulator
+try:
+    from ..models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
+    from .model_zoo import get_layers, get_metadata
+    from .scenarios import Scenario, sample_scenario
+    from .simulator import HardwareSimulator
+except ImportError:  # pragma: no cover - fallback for repo-root execution
+    from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
+    from server.model_zoo import get_layers, get_metadata
+    from server.scenarios import Scenario, sample_scenario
+    from server.simulator import HardwareSimulator
 
 
 class NeuralTunerEnvironment(Environment):

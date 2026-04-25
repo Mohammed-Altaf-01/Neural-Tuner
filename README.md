@@ -1,242 +1,108 @@
-# Neural Tuner Env Environment
+# NeuralTuner: Hardware-Aware RL Environment for LLMs
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+NeuralTuner trains an LLM to behave like a hardware optimization engineer: profile layers, choose per-layer quantization (`FP16`/`INT8`/`INT4`), validate constraints, and submit a deployable configuration.
+
+## Why This Matters
+
+Deploying neural networks on edge devices requires balancing latency, memory, and accuracy. NeuralTuner converts this expert-heavy workflow into an OpenEnv task with measurable RL rewards.
+
+## Environment Loop
+
+1. `reset()` gives model metadata, constraints, and layer table (sensitivities hidden).
+2. `profile_layer(layer_id)` reveals sensitivity for strategic investigation.
+3. `quantize_layer(layer_id, dtype)` applies a quantization decision.
+4. `benchmark()` returns latency/memory/accuracy estimates and projected reward.
+5. `submit()` finalizes and returns episode reward.
+
+Core files:
+- `server/neural_tuner_env_environment.py`
+- `server/simulator.py`
+- `server/scenarios.py`
+- `server/model_zoo.py`
+- `models.py`
+
+## Reward Design
+
+Reward combines four parts:
+- latency improvement (continuous, capped)
+- memory fit (binary)
+- accuracy retention (continuous when above threshold)
+- all-constraints efficiency bonus
+
+This design discourages reward hacking (for example, blindly INT4-quantizing everything).
 
 ## Quick Start
 
-The simplest way to use the Neural Tuner Env environment is through the `NeuralTunerEnv` class:
-
-```python
-from neural_tuner_env import NeuralTunerAction, NeuralTunerEnv
-
-try:
-    # Create environment from Docker image
-    neural_tuner_envenv = NeuralTunerEnv.from_docker_image("neural_tuner_env-env:latest")
-
-    # Reset
-    result = neural_tuner_envenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
-
-    for msg in messages:
-        result = neural_tuner_envenv.step(NeuralTunerAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
-
-finally:
-    # Always clean up
-    neural_tuner_envenv.close()
-```
-
-That's it! The `NeuralTunerEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
-
-## Building the Docker Image
-
-Before using the environment, you need to build the Docker image:
+### Install
 
 ```bash
-# From project root
-docker build -t neural_tuner_env-env:latest -f server/Dockerfile .
+uv sync
 ```
 
-## Deploying to Hugging Face Spaces
-
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+Optional notebook/training dependencies:
 
 ```bash
-# From the environment directory (where openenv.yaml is located)
+uv sync --extra training
+```
+
+### Run Server
+
+```bash
+uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Generate Baseline vs Heuristic Eval Artifacts
+
+```bash
+python rollout_eval.py --model-id inception_v3 --difficulty medium --output-dir artifacts/eval
+```
+
+Outputs:
+- `artifacts/eval/episode_metrics.json`
+- `artifacts/eval/episode_metrics.csv`
+
+### Run Inference-Only Action Prediction
+
+```bash
+HF_TOKEN=... python inference.py --mode hf_api --observation "..." --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+```
+
+`inference.py` is intentionally inference-only. Training and reward improvement demos belong in the notebook.
+
+## Training Notebook (TRL)
+
+Use `notebooks/neural_tuner_trl_mac.ipynb` for:
+- environment smoke test
+- baseline metric collection
+- TRL GRPO setup skeleton with DeepSeek-R1 distill model
+- reward logging and plot export
+
+## Tests
+
+```bash
+pytest -q
+```
+
+Current tests validate:
+- benchmark budget enforcement
+- invalid layer handling
+- submission terminal behavior
+- reward sanity for safe vs over-aggressive quantization
+
+## OpenEnv Deployment
+
+Manifest: `openenv.yaml`  
+App entrypoint: `server.app:app`
+
+Push to Hugging Face Space:
+
+```bash
 openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
 ```
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
+## Submission Checklist
 
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
-
-```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
-
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
-```
-
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
-
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
-
-## Environment Details
-
-### Action
-**NeuralTunerAction**: Contains a single field
-- `message` (str) - The message to echo back
-
-### Observation
-**NeuralTunerObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Neural Tuner Env environment server running, you can connect directly:
-
-```python
-from neural_tuner_env import NeuralTunerEnv
-
-# Connect to existing server
-neural_tuner_envenv = NeuralTunerEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = neural_tuner_envenv.reset()
-result = neural_tuner_envenv.step(NeuralTunerAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `neural_tuner_envenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from neural_tuner_env import NeuralTunerAction, NeuralTunerEnv
-
-# Connect with context manager (auto-connects and closes)
-with NeuralTunerEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(NeuralTunerAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    NeuralTunerEnvironment,  # Pass class, not instance
-    NeuralTunerAction,
-    NeuralTunerObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from neural_tuner_env import NeuralTunerAction, NeuralTunerEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with NeuralTunerEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(NeuralTunerAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
-
-```bash
-# From the server directory
-python3 server/neural_tuner_env_environment.py
-```
-
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
-
-### Running Locally
-
-Run the server locally for development:
-
-```bash
-uvicorn server.app:app --reload
-```
-
-## Project Structure
-
-```
-neural_tuner_env/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # NeuralTunerEnv client
-├── models.py              # Action and Observation models
-└── server/
-    ├── __init__.py        # Server module exports
-    ├── neural_tuner_env_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
-```
+- [ ] Embed baseline vs trained reward plots in README.
+- [ ] Add notebook outputs/screenshots and short captions.
+- [ ] Link video demo, blog post, and HF Space.
+- [ ] Include one side-by-side episode trace (random vs trained).
