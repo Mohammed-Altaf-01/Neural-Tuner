@@ -1,7 +1,8 @@
 spec_version: 1
 name: neural_tuner_env
+version: "0.1.0"
+description: "RL environment for training LLMs to optimize neural networks for Qualcomm Snapdragon edge hardware via quantization (FP16/INT8/INT4)"
 type: space
 runtime: fastapi
 app: server.app:app
 port: 8000
-

@@ -4,96 +4,64 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Neural Tuner Env Environment Client."""
+"""NeuralTuner Environment Client."""
 
 from typing import Dict
 
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
-from openenv.core.env_server.types import State
 
-from .models import NeuralTunerAction, NeuralTunerObservation
+from .models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
 
 
-class NeuralTunerEnv(
-    EnvClient[NeuralTunerAction, NeuralTunerObservation, State]
-):
+class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, NeuralTunerState]):
     """
-    Client for the Neural Tuner Env Environment.
+    Client for the NeuralTuner Environment.
 
-    This client maintains a persistent WebSocket connection to the environment server,
-    enabling efficient multi-step interactions with lower latency.
-    Each client instance has its own dedicated environment session on the server.
+    Maintains a persistent WebSocket connection to the environment server,
+    enabling efficient multi-step LLM-agent rollouts.
 
     Example:
-        >>> # Connect to a running server
-        >>> with NeuralTunerEnv(base_url="http://localhost:8000") as client:
-        ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
+        >>> with NeuralTunerEnv(base_url="http://localhost:8000") as env:
+        ...     result = env.reset()
+        ...     print(result.observation.output)
         ...
-        ...     result = client.step(NeuralTunerAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
-
-    Example with Docker:
-        >>> # Automatically start container and connect
-        >>> client = NeuralTunerEnv.from_docker_image("neural_tuner_env-env:latest")
-        >>> try:
-        ...     result = client.reset()
-        ...     result = client.step(NeuralTunerAction(message="Test"))
-        ... finally:
-        ...     client.close()
+        ...     action = NeuralTunerAction(action_type="profile_layer", layer_id="fc_classifier")
+        ...     result = env.step(action)
+        ...     print(result.observation.output)
     """
 
     def _step_payload(self, action: NeuralTunerAction) -> Dict:
-        """
-        Convert NeuralTunerAction to JSON payload for step message.
-
-        Args:
-            action: NeuralTunerAction instance
-
-        Returns:
-            Dictionary representation suitable for JSON encoding
-        """
-        return {
-            "message": action.message,
-        }
+        payload: Dict = {"action_type": action.action_type}
+        if action.layer_id is not None:
+            payload["layer_id"] = action.layer_id
+        if action.dtype is not None:
+            payload["dtype"] = action.dtype
+        return payload
 
     def _parse_result(self, payload: Dict) -> StepResult[NeuralTunerObservation]:
-        """
-        Parse server response into StepResult[NeuralTunerObservation].
-
-        Args:
-            payload: JSON response data from server
-
-        Returns:
-            StepResult with NeuralTunerObservation
-        """
         obs_data = payload.get("observation", {})
         observation = NeuralTunerObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
+            output=obs_data.get("output", ""),
+            success=obs_data.get("success", True),
+            error=obs_data.get("error"),
             done=payload.get("done", False),
-            reward=payload.get("reward"),
+            reward=payload.get("reward", 0.0),
             metadata=obs_data.get("metadata", {}),
         )
-
         return StepResult(
             observation=observation,
-            reward=payload.get("reward"),
+            reward=payload.get("reward", 0.0),
             done=payload.get("done", False),
         )
 
-    def _parse_state(self, payload: Dict) -> State:
-        """
-        Parse server response into State object.
-
-        Args:
-            payload: JSON response from state request
-
-        Returns:
-            State object with episode_id and step_count
-        """
-        return State(
+    def _parse_state(self, payload: Dict) -> NeuralTunerState:
+        return NeuralTunerState(
             episode_id=payload.get("episode_id"),
             step_count=payload.get("step_count", 0),
+            model_id=payload.get("model_id", ""),
+            difficulty=payload.get("difficulty", "easy"),
+            submitted=payload.get("submitted", False),
+            benchmark_count=payload.get("benchmark_count", 0),
+            final_reward=payload.get("final_reward"),
         )

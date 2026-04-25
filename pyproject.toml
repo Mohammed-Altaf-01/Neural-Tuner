@@ -14,9 +14,11 @@ version = "0.1.0"
 description = "Neural Tuner Env environment for OpenEnv"
 requires-python = ">=3.10"
 dependencies = [
+    "black>=26.3.1",
     # Core OpenEnv runtime (provides FastAPI server + HTTP client types)
     # install from github
     # "openenv-core[core] @ git+https://github.com/meta-pytorch/OpenEnv.git",
+    "isort>=8.0.1",
     "openenv-core[core]>=0.2.2",
     # Environment-specific dependencies
     # Add all dependencies needed for your environment here
