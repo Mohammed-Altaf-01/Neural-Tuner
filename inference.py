@@ -46,7 +46,7 @@ def build_prompt(observation_text: str) -> str:
     return (
         "You are an RL environment agent for NeuralTuner.\n"
         "Return exactly one JSON object with keys: action_type, layer_id, dtype.\n"
-        "Allowed action_type: profile_layer, quantize_layer, revert_layer, benchmark, submit.\n"
+        "Allowed action_type: profile_layer, quantize_layer, prune_layer, revert_layer, benchmark, submit.\n"
         "If action_type does not require layer_id/dtype, set them to null.\n"
         "Choose safe, strategic quantization decisions.\n\n"
         f"Observation:\n{observation_text}\n"
@@ -145,7 +145,7 @@ def run_default_pipeline(model: str, mode: str, difficulty: str, scenario_model:
             raise RuntimeError(f"Model returned unsupported dtype: {decision.dtype}")
 
         action_type = cast(
-            Literal["profile_layer", "quantize_layer", "revert_layer", "benchmark", "submit"],
+            Literal["profile_layer", "quantize_layer", "prune_layer", "revert_layer", "benchmark", "submit"],
             decision.action_type,
         )
         dtype = cast(Optional[Literal["FP32", "FP16", "INT8", "INT4"]], decision.dtype)

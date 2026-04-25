@@ -198,13 +198,99 @@ def run_policy_sweep(
     return results
 
 
+def _run_traced_random(
+    env: NeuralTunerEnvironment,
+    model_id: str,
+    difficulty: str,
+    seed: int = 42,
+) -> tuple:
+    rng = random.Random(seed)
+    dtypes = ["FP32", "FP16", "INT8", "INT4"]
+    reset_obs = env.reset(model_id=model_id, difficulty=difficulty, seed=seed)
+    layer_ids = _layer_ids_from_reset(reset_obs.output)
+    steps = []
+    for layer_id in layer_ids:
+        dtype = rng.choice(dtypes)
+        obs = env.step(NeuralTunerAction(action_type="quantize_layer", layer_id=layer_id, dtype=dtype))
+        steps.append((f"quantize_layer({layer_id}, {dtype})", obs.output[:80]))
+    env.step(NeuralTunerAction(action_type="benchmark"))
+    steps.append(("benchmark()", ""))
+    final = env.step(NeuralTunerAction(action_type="submit"))
+    steps.append(("submit()", ""))
+    return steps, final.reward, bool((final.metadata or {}).get("all_constraints_met"))
+
+
+def _run_traced_heuristic(
+    env: NeuralTunerEnvironment,
+    model_id: str,
+    difficulty: str,
+    seed: int = 42,
+) -> tuple:
+    reset_obs = env.reset(model_id=model_id, difficulty=difficulty, seed=seed)
+    layer_ids = _layer_ids_from_reset(reset_obs.output)
+    steps = []
+    profiled: Dict[str, float] = {}
+    for layer_id in layer_ids[:6]:
+        obs = env.step(NeuralTunerAction(action_type="profile_layer", layer_id=layer_id))
+        sens = float((obs.metadata or {}).get("sensitivity", 1.0))
+        profiled[layer_id] = sens
+        steps.append((f"profile_layer({layer_id})", f"sensitivity={sens:.3f}"))
+    for layer_id, sens in profiled.items():
+        if sens < 0.10:
+            dtype = "INT4"
+        elif sens < 0.20:
+            dtype = "INT8"
+        elif sens < 0.30:
+            dtype = "FP16"
+        else:
+            dtype = "FP32"
+        env.step(NeuralTunerAction(action_type="quantize_layer", layer_id=layer_id, dtype=dtype))
+        steps.append((f"quantize_layer({layer_id}, {dtype})", ""))
+    env.step(NeuralTunerAction(action_type="benchmark"))
+    steps.append(("benchmark()", ""))
+    final = env.step(NeuralTunerAction(action_type="submit"))
+    steps.append(("submit()", ""))
+    return steps, final.reward, bool((final.metadata or {}).get("all_constraints_met"))
+
+
+def generate_episode_trace(
+    model_id: str = "inception_v3",
+    difficulty: str = "medium",
+    seed: int = 42,
+) -> str:
+    """Return a markdown-formatted side-by-side trace: random vs heuristic policy."""
+    env = NeuralTunerEnvironment()
+    lines = [f"## Episode Trace: `{model_id}` ({difficulty})\n"]
+    for name, fn in [
+        ("Random Agent (no profiling)", _run_traced_random),
+        ("Heuristic Agent (profile-first)", _run_traced_heuristic),
+    ]:
+        steps, reward, met = fn(env, model_id, difficulty, seed)
+        lines.append(f"### {name}")
+        for i, (action_str, snippet) in enumerate(steps, 1):
+            note = f" → _{snippet}_" if snippet else ""
+            lines.append(f"**Step {i}:** `{action_str}`{note}")
+        lines.append(f"\n**Final reward: {reward:.4f}** | constraints_met={met}\n")
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run NeuralTuner policy evaluation.")
     parser.add_argument("--model-id", default="inception_v3", help="Model id from model_zoo.")
     parser.add_argument("--difficulty", default="medium", choices=["easy", "medium", "hard"])
     parser.add_argument("--output-dir", default="artifacts/eval", help="Where metrics files are written.")
     parser.add_argument("--n-random", type=int, default=10, help="Number of random-seed episodes to run.")
+    parser.add_argument("--trace", action="store_true", help="Generate side-by-side episode trace markdown.")
     args = parser.parse_args()
+
+    if args.trace:
+        trace_md = generate_episode_trace(args.model_id, args.difficulty)
+        out_path = Path(args.output_dir) / "episode_trace.md"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(trace_md, encoding="utf-8")
+        print(f"Saved episode trace: {out_path}")
+        print(trace_md)
+        return 0
 
     metrics = run_policy_sweep(args.model_id, args.difficulty, n_random_seeds=args.n_random)
     _write_metrics(metrics, Path(args.output_dir))
