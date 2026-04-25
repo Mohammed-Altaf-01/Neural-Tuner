@@ -22,7 +22,7 @@ from typing import Any, Dict, Literal, Optional, cast
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_MODE = "chat_completion"
 DEFAULT_MAX_STEPS = 20
-ALLOWED_ACTIONS = {"profile_layer", "quantize_layer", "revert_layer", "benchmark", "submit"}
+ALLOWED_ACTIONS = {"profile_layer", "quantize_layer", "prune_layer", "revert_layer", "benchmark", "submit"}
 ALLOWED_DTYPES = {"FP32", "FP16", "INT8", "INT4"}
 
 try:
@@ -92,9 +92,7 @@ def infer_local_transformers(prompt: str, model: str) -> str:
     try:
         from transformers import pipeline
     except ImportError as exc:  # pragma: no cover - depends on local setup
-        raise RuntimeError(
-            "transformers is not installed. Install with: pip install transformers torch"
-        ) from exc
+        raise RuntimeError("transformers is not installed. Install with: pip install transformers torch") from exc
 
     generator = pipeline("text-generation", model=model)
     out = generator(
@@ -109,7 +107,11 @@ def infer_local_transformers(prompt: str, model: str) -> str:
 
 def decide_action(observation_text: str, model: str, mode: str) -> ActionDecision:
     prompt = build_prompt(observation_text)
-    raw_text = infer_with_chat_completion(prompt, model) if mode == "chat_completion" else infer_local_transformers(prompt, model)
+    raw_text = (
+        infer_with_chat_completion(prompt, model)
+        if mode == "chat_completion"
+        else infer_local_transformers(prompt, model)
+    )
     thinking = _extract_thinking(raw_text)
     action_obj = _extract_json_block(raw_text)
     return ActionDecision(
@@ -183,7 +185,9 @@ def main() -> int:
     )
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default="medium")
     parser.add_argument("--scenario-model", default="inception_v3", help="Scenario model id for default pipeline.")
-    parser.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS, help="Max inference turns in default pipeline.")
+    parser.add_argument(
+        "--max-steps", type=int, default=DEFAULT_MAX_STEPS, help="Max inference turns in default pipeline."
+    )
     args = parser.parse_args()
 
     try:

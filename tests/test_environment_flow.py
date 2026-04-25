@@ -27,9 +27,7 @@ def test_invalid_layer_returns_error():
     env = NeuralTunerEnvironment()
     env.reset(model_id="inception_v3", difficulty="easy", seed=42)
 
-    result = env.step(
-        NeuralTunerAction(action_type="quantize_layer", layer_id="not_a_layer", dtype="INT8")
-    )
+    result = env.step(NeuralTunerAction(action_type="quantize_layer", layer_id="not_a_layer", dtype="INT8"))
     assert result.success is False
     assert result.error == "layer_not_found"
 
@@ -53,9 +51,7 @@ def test_quantize_then_revert_changes_state_safely():
     reset_obs = env.reset(model_id="resnet50", difficulty="easy", seed=123)
     layer_id = _first_layer_id(reset_obs.output)
 
-    quantized = env.step(
-        NeuralTunerAction(action_type="quantize_layer", layer_id=layer_id, dtype="INT8")
-    )
+    quantized = env.step(NeuralTunerAction(action_type="quantize_layer", layer_id=layer_id, dtype="INT8"))
     assert quantized.success is True
 
     reverted = env.step(NeuralTunerAction(action_type="revert_layer", layer_id=layer_id))
