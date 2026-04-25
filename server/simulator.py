@@ -15,7 +15,7 @@ and additively for accuracy penalty — matching real HTP behaviour.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .model_zoo import LayerProfile
 
