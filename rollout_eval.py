@@ -10,9 +10,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from models import NeuralTunerAction
 from server.neural_tuner_env_environment import NeuralTunerEnvironment
@@ -50,6 +51,44 @@ def _layer_ids_from_reset(reset_output: str) -> List[str]:
         if tokens:
             layer_ids.append(tokens[0])
     return layer_ids
+
+
+def run_random_episode(
+    env: NeuralTunerEnvironment,
+    model_id: str,
+    difficulty: str,
+    seed: Optional[int] = None,
+) -> EpisodeMetrics:
+    """Truly random policy: pick a random dtype for every layer without profiling.
+
+    This is the pre-training baseline that shows what zero knowledge looks like.
+    Expected reward: 0.20–0.45 depending on model/difficulty.
+    """
+    rng = random.Random(seed)
+    dtypes = ["FP32", "FP16", "INT8", "INT4"]
+
+    reset_obs = env.reset(model_id=model_id, difficulty=difficulty, seed=seed)
+    layer_ids = _layer_ids_from_reset(reset_obs.output)
+    for layer_id in layer_ids:
+        env.step(NeuralTunerAction(action_type="quantize_layer", layer_id=layer_id, dtype=rng.choice(dtypes)))
+    env.step(NeuralTunerAction(action_type="benchmark"))
+    final = env.step(NeuralTunerAction(action_type="submit"))
+    report = final.metadata or {}
+    st = env.state
+    return EpisodeMetrics(
+        policy="random",
+        episode_index=0,
+        model_id=model_id,
+        difficulty=difficulty,
+        final_reward=final.reward,
+        done=final.done,
+        step_count=st.step_count,
+        benchmark_count=st.benchmark_count,
+        latency_ms=float(report.get("quantized_latency_ms", 0.0)),
+        memory_mb=float(report.get("quantized_memory_mb", 0.0)),
+        accuracy_retention=float(report.get("estimated_accuracy_retention", 0.0)),
+        constraints_met=bool(report.get("all_constraints_met", False)),
+    )
 
 
 def run_baseline_episode(env: NeuralTunerEnvironment, model_id: str, difficulty: str) -> EpisodeMetrics:
@@ -134,18 +173,44 @@ def _write_metrics(metrics: List[EpisodeMetrics], out_dir: Path) -> None:
         writer.writerows(as_rows)
 
 
+def run_policy_sweep(
+    model_id: str,
+    difficulty: str,
+    n_random_seeds: int = 10,
+) -> List[EpisodeMetrics]:
+    """Run all three policies and aggregate random over multiple seeds.
+
+    Returns a list of EpisodeMetrics suitable for writing to disk and plotting.
+    Useful for the before/after comparison in the training notebook.
+    """
+    results: List[EpisodeMetrics] = []
+    env = NeuralTunerEnvironment()
+
+    # Multiple random seeds to get a stable pre-training estimate
+    for seed in range(n_random_seeds):
+        m = run_random_episode(env, model_id, difficulty, seed=seed)
+        m.episode_index = seed
+        results.append(m)
+
+    # Single deterministic policies for reference ceiling
+    results.append(run_baseline_episode(env, model_id, difficulty))
+    results.append(run_heuristic_episode(env, model_id, difficulty))
+    return results
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run baseline and heuristic NeuralTuner episodes.")
+    parser = argparse.ArgumentParser(description="Run NeuralTuner policy evaluation.")
     parser.add_argument("--model-id", default="inception_v3", help="Model id from model_zoo.")
     parser.add_argument("--difficulty", default="medium", choices=["easy", "medium", "hard"])
     parser.add_argument("--output-dir", default="artifacts/eval", help="Where metrics files are written.")
+    parser.add_argument("--n-random", type=int, default=10, help="Number of random-seed episodes to run.")
     args = parser.parse_args()
 
-    env = NeuralTunerEnvironment()
-    baseline = run_baseline_episode(env, args.model_id, args.difficulty)
-    heuristic = run_heuristic_episode(env, args.model_id, args.difficulty)
-    _write_metrics([baseline, heuristic], Path(args.output_dir))
-    print(f"Wrote metrics to {args.output_dir}")
+    metrics = run_policy_sweep(args.model_id, args.difficulty, n_random_seeds=args.n_random)
+    _write_metrics(metrics, Path(args.output_dir))
+    print(f"Wrote {len(metrics)} episode metrics to {args.output_dir}")
+    for m in metrics:
+        print(f"  policy={m.policy:12s}  reward={m.final_reward:.4f}  constraints_met={m.constraints_met}")
     return 0
 
 

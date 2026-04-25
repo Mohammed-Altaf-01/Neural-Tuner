@@ -14,3 +14,4 @@ notes.md
 .env.local
 .hf_cache
 .pytest_cache
+outputs/

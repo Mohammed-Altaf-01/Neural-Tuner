@@ -7,10 +7,11 @@
 """
 Data models for the NeuralTuner environment.
 
-NeuralTunerAction drives five operations an LLM agent can take:
+NeuralTunerAction drives six operations an LLM agent can take:
   profile_layer  — reveal sensitivity and stats for one layer
   quantize_layer — apply a dtype (FP32/FP16/INT8/INT4) to a layer
-  revert_layer   — reset a layer back to FP32
+  prune_layer    — apply structured pruning (LOW=25%/MEDIUM=50%/HIGH=75% channels)
+  revert_layer   — reset a layer back to FP32 and NONE pruning
   benchmark      — simulate hardware performance (limited budget)
   submit         — finalize and receive the episode reward
 
@@ -44,6 +45,7 @@ class NeuralTunerAction(Action):
     action_type: Literal[
         "profile_layer",
         "quantize_layer",
+        "prune_layer",
         "revert_layer",
         "benchmark",
         "submit",
@@ -51,11 +53,15 @@ class NeuralTunerAction(Action):
 
     layer_id: Optional[str] = Field(
         default=None,
-        description="Target layer ID (required for profile/quantize/revert)",
+        description="Target layer ID (required for profile/quantize/prune/revert)",
     )
     dtype: Optional[Literal["FP32", "FP16", "INT8", "INT4"]] = Field(
         default=None,
         description="Target dtype (required for quantize_layer)",
+    )
+    sparsity: Optional[Literal["LOW", "MEDIUM", "HIGH"]] = Field(
+        default=None,
+        description="Pruning sparsity level (required for prune_layer): LOW=25%, MEDIUM=50%, HIGH=75%",
     )
 
 

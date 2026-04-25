@@ -71,7 +71,7 @@ HF_TOKEN=... python inference.py --mode hf_api --observation "..." --model deeps
 
 ## Training Notebook (TRL)
 
-Use `notebooks/neural_tuner_trl_mac.ipynb` for:
+Use `neural_tuner_trl_mac.ipynb` for:
 - environment smoke test
 - baseline metric collection
 - TRL GRPO setup skeleton with DeepSeek-R1 distill model

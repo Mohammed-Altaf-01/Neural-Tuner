@@ -19,6 +19,7 @@ dependencies = [
     # install from github
     # "openenv-core[core] @ git+https://github.com/meta-pytorch/OpenEnv.git",
     "isort>=8.0.1",
+    "jmespath>=1.1.0",
     "openenv-core[core]>=0.2.2",
     # Environment-specific dependencies
     # Add all dependencies needed for your environment here
@@ -28,6 +29,7 @@ dependencies = [
     # "gymnasium>=0.29.0",
     # "openspiel>=1.0.0",
     # "smolagents>=1.22.0,<2",
+    "peft>=0.19.1",
 ]
 
 [project.optional-dependencies]

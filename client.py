@@ -40,6 +40,8 @@ class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, Neural
             payload["layer_id"] = action.layer_id
         if action.dtype is not None:
             payload["dtype"] = action.dtype
+        if action.sparsity is not None:
+            payload["sparsity"] = action.sparsity
         return payload
 
     def _parse_result(self, payload: Dict) -> StepResult[NeuralTunerObservation]:

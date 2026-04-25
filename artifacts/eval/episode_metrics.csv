@@ -1,3 +1,8 @@
 policy,episode_index,model_id,difficulty,final_reward,done,step_count,benchmark_count,latency_ms,memory_mb,accuracy_retention,constraints_met
+random,0,inception_v3,medium,0.7622,True,12,1,77.74,57.31,0.9699,True
+random,1,inception_v3,medium,0.6426,True,12,1,83.5,67.51,0.9667,False
+random,2,inception_v3,medium,0.343,True,12,1,103.58,87.55,0.9898,False
+random,3,inception_v3,medium,0.3174,True,12,1,102.51,90.28,0.9758,False
+random,4,inception_v3,medium,0.2702,True,12,1,113.44,103.06,0.9647,False
 baseline,0,inception_v3,medium,0.786,True,10,1,64.18,40.01,0.9663,True
 heuristic,0,inception_v3,medium,0.6428,True,14,1,93.77,77.11,0.9785,False

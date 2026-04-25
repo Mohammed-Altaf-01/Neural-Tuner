@@ -8,14 +8,16 @@
 NeuralTuner RL Environment.
 
 An LLM agent acts as a hardware optimization engineer, profiling neural
-network layers and applying quantization (FP32/FP16/INT8/INT4) to meet
-Snapdragon HTP constraints (latency, memory, accuracy).
+network layers and applying quantization (FP32/FP16/INT8/INT4) and structured
+pruning (LOW/MEDIUM/HIGH) to meet Snapdragon HTP constraints (latency, memory,
+accuracy). Quantization and pruning effects stack multiplicatively.
 
 Episode flow:
   reset()           → observe model + constraints, all sensitivities hidden
-  profile_layer()   → reveal sensitivity for one layer
+  profile_layer()   → reveal sensitivity + quantization & pruning advice
   quantize_layer()  → apply dtype to a layer
-  revert_layer()    → undo a quantization decision
+  prune_layer()     → apply structured pruning sparsity to a layer
+  revert_layer()    → undo both quantization and pruning for a layer
   benchmark()       → run hardware simulation (≤ MAX_BENCHMARKS per episode)
   submit()          → finalize; receive multi-component reward
 """
@@ -53,6 +55,7 @@ class NeuralTunerEnvironment(Environment):
         self._scenario: Optional[Scenario] = None
         self._layer_ids: list = []
         self._quantization_map: Dict[str, str] = {}
+        self._prune_map: Dict[str, str] = {}
         self._profiled_layers: Set[str] = set()
         self._benchmark_count: int = 0
         self._submitted: bool = False
@@ -73,6 +76,7 @@ class NeuralTunerEnvironment(Environment):
         self._scenario = scenario
         self._simulator = HardwareSimulator(layers, scenario.constraints)
         self._quantization_map = {l.layer_id: "FP32" for l in layers}
+        self._prune_map = {l.layer_id: "NONE" for l in layers}
         self._layer_ids = [l.layer_id for l in layers]
         self._profiled_layers = set()
         self._benchmark_count = 0
@@ -120,6 +124,7 @@ class NeuralTunerEnvironment(Environment):
         dispatch = {
             "profile_layer": self._handle_profile,
             "quantize_layer": self._handle_quantize,
+            "prune_layer": self._handle_prune,
             "revert_layer": self._handle_revert,
             "benchmark": self._handle_benchmark,
             "submit": self._handle_submit,
@@ -127,7 +132,7 @@ class NeuralTunerEnvironment(Environment):
         handler = dispatch.get(action.action_type)
         if handler is None:
             return NeuralTunerObservation(
-                output=f"Unknown action_type: '{action.action_type}'. " f"Valid: {list(dispatch)}",
+                output=f"Unknown action_type: '{action.action_type}'. Valid: {list(dispatch)}",
                 success=False,
                 error="invalid_action",
                 done=False,
@@ -155,7 +160,7 @@ class NeuralTunerEnvironment(Environment):
         self._profiled_layers.add(action.layer_id)
 
         risk = report["sensitivity_risk"]
-        advice = {
+        quant_advice = {
             "low": "Safe to quantize aggressively (INT4 viable).",
             "medium": "Quantize with caution — prefer INT8 over INT4.",
             "high": "High sensitivity — use FP16 or keep at FP32.",
@@ -163,13 +168,13 @@ class NeuralTunerEnvironment(Environment):
 
         text = (
             f"PROFILE: {action.layer_id}\n"
-            f"  Type:        {report['layer_type']}\n"
-            f"  Latency:     {report['base_latency_ms']} ms\n"
-            f"  Memory:      {report['base_memory_mb']} MB\n"
-            f"  Parameters:  {report['param_count']:,}\n"
-            f"  Sensitivity: {report['sensitivity']:.3f}  [{risk} risk]\n"
-            f"  Current:     {self._quantization_map[action.layer_id]}\n"
-            f"  Advice:      {advice}"
+            f"  Type:          {report['layer_type']}\n"
+            f"  Latency:       {report['base_latency_ms']} ms\n"
+            f"  Memory:        {report['base_memory_mb']} MB\n"
+            f"  Parameters:    {report['param_count']:,}\n"
+            f"  Sensitivity:   {report['sensitivity']:.3f}  [{risk} risk]\n"
+            f"  Quantization:  {self._quantization_map[action.layer_id]}  — {quant_advice}\n"
+            f"  Pruning:       {self._prune_map[action.layer_id]}  — {report['prune_advice']}"
         )
         return NeuralTunerObservation(
             output=text,
@@ -199,13 +204,46 @@ class NeuralTunerEnvironment(Environment):
 
         warning = ""
         if action.layer_id not in self._profiled_layers:
-            warning = "\n  WARNING: Layer not profiled. " "Sensitivity is unknown — accuracy impact is unpredictable."
+            warning = "\n  WARNING: Layer not profiled. Sensitivity unknown — accuracy impact is unpredictable."
 
         n_quantized = sum(1 for v in self._quantization_map.values() if v != "FP32")
         text = (
             f"QUANTIZE: {action.layer_id}  {prev} → {action.dtype}"
             f"{warning}\n"
             f"  {n_quantized}/{len(self._quantization_map)} layers quantized. "
+            f"Run 'benchmark' to see updated hardware metrics."
+        )
+        return NeuralTunerObservation(output=text, success=True, done=False, reward=0.0)
+
+    def _handle_prune(self, action: NeuralTunerAction) -> NeuralTunerObservation:
+        err = self._require_layer(action.layer_id)
+        if err:
+            return err
+        assert action.layer_id is not None
+        assert self._simulator is not None
+
+        if not action.sparsity:
+            return NeuralTunerObservation(
+                output="prune_layer requires sparsity (LOW | MEDIUM | HIGH).",
+                success=False,
+                error="missing_sparsity",
+                done=False,
+                reward=0.0,
+            )
+
+        warning = ""
+        if action.layer_id not in self._profiled_layers:
+            warning = "\n  WARNING: Layer not profiled. Pruning impact on accuracy is unknown."
+
+        prev = self._prune_map[action.layer_id]
+        self._prune_map[action.layer_id] = action.sparsity
+
+        sparsity_pct = {"LOW": "25%", "MEDIUM": "50%", "HIGH": "75%"}[action.sparsity]
+        n_pruned = sum(1 for v in self._prune_map.values() if v != "NONE")
+        text = (
+            f"PRUNE: {action.layer_id}  {prev} → {action.sparsity} ({sparsity_pct} channels removed)"
+            f"{warning}\n"
+            f"  {n_pruned}/{len(self._prune_map)} layers pruned. "
             f"Run 'benchmark' to see updated hardware metrics."
         )
         return NeuralTunerObservation(output=text, success=True, done=False, reward=0.0)
@@ -217,10 +255,12 @@ class NeuralTunerEnvironment(Environment):
         assert action.layer_id is not None
         assert self._simulator is not None
 
-        prev = self._quantization_map[action.layer_id]
+        prev_dtype = self._quantization_map[action.layer_id]
+        prev_sparsity = self._prune_map[action.layer_id]
         self._quantization_map[action.layer_id] = "FP32"
+        self._prune_map[action.layer_id] = "NONE"
         return NeuralTunerObservation(
-            output=f"REVERT: {action.layer_id}  {prev} → FP32",
+            output=f"REVERT: {action.layer_id}  dtype {prev_dtype} → FP32  |  sparsity {prev_sparsity} → NONE",
             success=True,
             done=False,
             reward=0.0,
@@ -230,7 +270,7 @@ class NeuralTunerEnvironment(Environment):
         assert self._simulator is not None
         if self._benchmark_count >= self.MAX_BENCHMARKS:
             return NeuralTunerObservation(
-                output=(f"Benchmark budget exhausted ({self.MAX_BENCHMARKS} used). " "You must call submit() now."),
+                output=(f"Benchmark budget exhausted ({self.MAX_BENCHMARKS} used). You must call submit() now."),
                 success=False,
                 error="benchmark_limit_reached",
                 done=False,
@@ -238,7 +278,7 @@ class NeuralTunerEnvironment(Environment):
             )
 
         self._benchmark_count += 1
-        r = self._simulator.get_benchmark_report(self._quantization_map)
+        r = self._simulator.get_benchmark_report(self._quantization_map, self._prune_map)
         remaining = self.MAX_BENCHMARKS - self._benchmark_count
 
         def tick(ok: bool) -> str:
@@ -270,7 +310,7 @@ class NeuralTunerEnvironment(Environment):
 
     def _handle_submit(self, _action: Optional[NeuralTunerAction] = None) -> NeuralTunerObservation:
         assert self._simulator is not None
-        r = self._simulator.get_benchmark_report(self._quantization_map)
+        r = self._simulator.get_benchmark_report(self._quantization_map, self._prune_map)
         reward = r["reward"]
 
         self._final_reward = reward
@@ -293,9 +333,10 @@ class NeuralTunerEnvironment(Environment):
         scenario: Scenario,
         layers: list,
     ) -> NeuralTunerObservation:
-        header = f"{'Layer ID':<28} {'Type':<25} {'Latency':>8}  {'Memory':>8}  Sensitivity"
+        header = f"{'Layer ID':<28} {'Type':<25} {'Latency':>8}  {'Memory':>8}  Sensitivity  Pruning"
         rows = "\n".join(
-            f"  {l.layer_id:<26} {l.layer_type:<25} {l.base_latency_ms:>7.1f}ms  " f"{l.base_memory_mb:>6.1f}MB  HIDDEN"
+            f"  {l.layer_id:<26} {l.layer_type:<25} {l.base_latency_ms:>7.1f}ms  "
+            f"{l.base_memory_mb:>6.1f}MB  HIDDEN       NONE"
             for l in layers
         )
         c = scenario.constraints
@@ -316,26 +357,32 @@ class NeuralTunerEnvironment(Environment):
             f"\nSCENARIO\n  {scenario.description}\n"
             f"\nLAYERS ({len(layers)} total)\n"
             f"  {header}\n"
-            f"  {'-' * 85}\n"
+            f"  {'-' * 95}\n"
             f"{rows}\n"
             f"\nACTIONS\n"
-            f"  profile_layer  (layer_id)               reveal sensitivity & full stats\n"
+            f"  profile_layer  (layer_id)               reveal sensitivity, quant & prune advice\n"
             f"  quantize_layer (layer_id, dtype)         FP32 | FP16 | INT8 | INT4\n"
-            f"  revert_layer   (layer_id)                reset layer to FP32\n"
-            f"  benchmark      ()                        simulate hardware  "
-            f"[{self.MAX_BENCHMARKS} max]\n"
+            f"  prune_layer    (layer_id, sparsity)      LOW=25% | MEDIUM=50% | HIGH=75% channels\n"
+            f"  revert_layer   (layer_id)                reset dtype→FP32 and sparsity→NONE\n"
+            f"  benchmark      ()                        simulate hardware  [{self.MAX_BENCHMARKS} max]\n"
             f"  submit         ()                        finalize & receive reward\n"
             f"\nMax steps: {self.MAX_STEPS}  |  Benchmarks: {self.MAX_BENCHMARKS}\n"
-            f"Tip: Profile layers before quantizing to avoid unseen accuracy drops."
+            f"Tip: Profile layers first. Quantization and pruning stack — combined INT4+MEDIUM\n"
+            f"     gives 82% latency reduction but careful with sensitive layers."
         )
         return NeuralTunerObservation(output=text, success=True, done=False, reward=0.0)
 
     def _build_result_summary(self, r: dict, reward: float) -> str:
         verdict = "PASS" if r["all_constraints_met"] else "FAIL"
-        counts: Dict[str, int] = {}
+
+        dtype_counts: Dict[str, int] = {}
+        sparsity_counts: Dict[str, int] = {}
         for info in r["per_layer_breakdown"].values():
-            counts[info["dtype"]] = counts.get(info["dtype"], 0) + 1
-        dtype_line = "  ".join(f"{d}: {n}" for d, n in sorted(counts.items()))
+            dtype_counts[info["dtype"]] = dtype_counts.get(info["dtype"], 0) + 1
+            sparsity_counts[info["sparsity"]] = sparsity_counts.get(info["sparsity"], 0) + 1
+
+        dtype_line = "  ".join(f"{d}: {n}" for d, n in sorted(dtype_counts.items()))
+        prune_line = "  ".join(f"{s}: {n}" for s, n in sorted(sparsity_counts.items()))
 
         return (
             f"{'=' * 64}\n"
@@ -354,15 +401,12 @@ class NeuralTunerEnvironment(Environment):
             f"min {r['min_accuracy_retention']}  "
             f"{'PASS' if r['accuracy_ok'] else 'FAIL'}\n"
             f"\nQUANTIZATION BREAKDOWN\n  {dtype_line}\n"
+            f"\nPRUNING BREAKDOWN\n  {prune_line}\n"
             f"\nREWARD BREAKDOWN\n"
-            f"  Latency improvement ({r['latency_improvement_pct']}%):  "
-            f"max 0.40\n"
-            f"  Memory constraint:  "
-            f"{'0.30 PASS' if r['memory_fits'] else '0.00 FAIL'}\n"
-            f"  Accuracy retention:  "
-            f"{'max 0.20 PASS' if r['accuracy_ok'] else '0.00 FAIL'}\n"
-            f"  Efficiency bonus:  "
-            f"{'0.10 PASS' if r['all_constraints_met'] else '0.00'}\n"
+            f"  Latency improvement ({r['latency_improvement_pct']}%):  max 0.40\n"
+            f"  Memory constraint:  {'0.30 PASS' if r['memory_fits'] else '0.00 FAIL'}\n"
+            f"  Accuracy retention: {'max 0.20 PASS' if r['accuracy_ok'] else '0.00 FAIL'}\n"
+            f"  Efficiency bonus:   {'0.10 PASS' if r['all_constraints_met'] else '0.00'}\n"
         )
 
     # ── helpers ────────────────────────────────────────────────────────────
@@ -378,7 +422,7 @@ class NeuralTunerEnvironment(Environment):
             )
         if layer_id not in self._quantization_map:
             return NeuralTunerObservation(
-                output=f"Layer '{layer_id}' not found.\n" f"Available layers: {self._layer_ids}",
+                output=f"Layer '{layer_id}' not found.\nAvailable layers: {self._layer_ids}",
                 success=False,
                 error="layer_not_found",
                 done=False,
