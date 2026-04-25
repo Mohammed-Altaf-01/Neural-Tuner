@@ -1,0 +1,8 @@
+{
+  "pre_training_random_mean": 0.46502,
+  "pre_training_random_std": 0.1883426345785786,
+  "pre_training_random_min": 0.2649,
+  "pre_training_random_max": 0.7668,
+  "oracle_ceiling": 0.786,
+  "train_loss_final": -0.09361738711595535
+}

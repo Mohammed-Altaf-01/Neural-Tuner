@@ -1,0 +1,12 @@
+{
+  "pre_training_random_mean": 0.46502,
+  "pre_training_random_std": 0.1883426345785786,
+  "training_reward_mean": 0.23755000531673431,
+  "training_reward_last5_mean": 0.23755000531673431,
+  "training_reward_max": 0.23755000531673431,
+  "oracle_ceiling": 0.786,
+  "avg_tool_calls_per_episode": 4.75,
+  "frac_zero_std_steps": 0.0,
+  "lift_vs_random": -0.22746999468326567,
+  "pct_headroom_closed": -70.86734210332907
+}

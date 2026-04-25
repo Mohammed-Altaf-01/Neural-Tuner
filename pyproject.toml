@@ -30,6 +30,8 @@ dependencies = [
     # "openspiel>=1.0.0",
     # "smolagents>=1.22.0,<2",
     "peft>=0.19.1",
+    "wandb>=0.26.1",
+    "weave>=0.52.37",
 ]
 
 [project.optional-dependencies]
