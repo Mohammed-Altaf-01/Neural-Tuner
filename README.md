@@ -1,3 +1,12 @@
+---
+title: Neural Tuner Env Environment Server
+emoji: 🥉
+colorFrom: purple
+colorTo: pink
+sdk: docker
+pinned: false
+---
+
 # Neural Tuner Env Environment
 
 A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
