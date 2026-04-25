@@ -36,8 +36,8 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 try:
-    from ..models import NeuralTunerAction, NeuralTunerObservation
-    from .neural_tuner_env_environment import NeuralTunerEnvironment
+    from models import NeuralTunerAction, NeuralTunerObservation
+    from server.neural_tuner_env_environment import NeuralTunerEnvironment
 except ModuleNotFoundError:
     from models import NeuralTunerAction, NeuralTunerObservation
     from server.neural_tuner_env_environment import NeuralTunerEnvironment
@@ -49,7 +49,7 @@ app = create_app(
     NeuralTunerAction,
     NeuralTunerObservation,
     env_name="neural_tuner_env",
-    max_concurrent_envs=1,  # increase this number to allow more concurrent WebSocket sessions
+    max_concurrent_envs=16,  # support parallel rollouts for GRPO training
 )
 
 

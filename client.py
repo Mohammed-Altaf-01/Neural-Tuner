@@ -1,99 +1,98 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
+"""NeuralTuner environment client.
 
-"""Neural Tuner Env Environment Client."""
+Provides a typed client for interacting with the NeuralTuner server over
+WebSocket. Used in training notebooks and evaluation scripts.
+"""
 
-from typing import Dict
+from typing import Dict, Optional
 
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
-from openenv.core.env_server.types import State
 
-from .models import NeuralTunerAction, NeuralTunerObservation
+from .models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
 
 
-class NeuralTunerEnv(
-    EnvClient[NeuralTunerAction, NeuralTunerObservation, State]
-):
-    """
-    Client for the Neural Tuner Env Environment.
+class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, NeuralTunerState]):
+    """Client for the NeuralTuner environment server.
 
-    This client maintains a persistent WebSocket connection to the environment server,
-    enabling efficient multi-step interactions with lower latency.
-    Each client instance has its own dedicated environment session on the server.
+    Maintains a persistent WebSocket connection, with each instance getting
+    its own isolated environment session on the server.
 
-    Example:
-        >>> # Connect to a running server
-        >>> with NeuralTunerEnv(base_url="http://localhost:8000") as client:
-        ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
+    Example — sync usage:
+        >>> with NeuralTunerEnv(base_url="http://localhost:8000").sync() as env:
+        ...     result = env.reset(difficulty="easy")
+        ...     print(result.observation.output)
         ...
-        ...     result = client.step(NeuralTunerAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
+        ...     action = NeuralTunerAction(action_type="profile_layer", layer_id="conv_stem")
+        ...     result = env.step(action)
+        ...     print(result.observation.output)
 
-    Example with Docker:
-        >>> # Automatically start container and connect
-        >>> client = NeuralTunerEnv.from_docker_image("neural_tuner_env-env:latest")
-        >>> try:
-        ...     result = client.reset()
-        ...     result = client.step(NeuralTunerAction(message="Test"))
-        ... finally:
-        ...     client.close()
+    Example — async usage:
+        >>> async with NeuralTunerEnv(base_url="http://localhost:8000") as env:
+        ...     result = await env.reset(difficulty="medium")
+        ...     action = NeuralTunerAction(
+        ...         action_type="apply_quantization",
+        ...         layer_id="inception_e1",
+        ...         dtype="INT8",
+        ...     )
+        ...     result = await env.step(action)
     """
 
     def _step_payload(self, action: NeuralTunerAction) -> Dict:
-        """
-        Convert NeuralTunerAction to JSON payload for step message.
+        """Convert NeuralTunerAction to JSON payload for the WebSocket step message.
 
         Args:
-            action: NeuralTunerAction instance
+            action: The action to send to the environment server.
 
         Returns:
-            Dictionary representation suitable for JSON encoding
+            Dictionary representation of the action for JSON serialisation.
         """
-        return {
-            "message": action.message,
-        }
+        payload: Dict = {"action_type": action.action_type}
+        if action.layer_id is not None:
+            payload["layer_id"] = action.layer_id
+        if action.dtype is not None:
+            payload["dtype"] = action.dtype
+        return payload
 
     def _parse_result(self, payload: Dict) -> StepResult[NeuralTunerObservation]:
-        """
-        Parse server response into StepResult[NeuralTunerObservation].
+        """Parse server response into a typed StepResult.
 
         Args:
-            payload: JSON response data from server
+            payload: Raw JSON response from the server.
 
         Returns:
-            StepResult with NeuralTunerObservation
+            StepResult containing a NeuralTunerObservation.
         """
         obs_data = payload.get("observation", {})
         observation = NeuralTunerObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
+            output=obs_data.get("output", ""),
+            success=obs_data.get("success", True),
+            error=obs_data.get("error"),
             done=payload.get("done", False),
-            reward=payload.get("reward"),
+            reward=payload.get("reward", 0.0),
             metadata=obs_data.get("metadata", {}),
         )
-
         return StepResult(
             observation=observation,
-            reward=payload.get("reward"),
+            reward=payload.get("reward", 0.0),
             done=payload.get("done", False),
         )
 
-    def _parse_state(self, payload: Dict) -> State:
-        """
-        Parse server response into State object.
+    def _parse_state(self, payload: Dict) -> NeuralTunerState:
+        """Parse server response into a typed NeuralTunerState.
 
         Args:
-            payload: JSON response from state request
+            payload: Raw JSON response from the server state endpoint.
 
         Returns:
-            State object with episode_id and step_count
+            NeuralTunerState with episode metadata.
         """
-        return State(
-            episode_id=payload.get("episode_id"),
+        return NeuralTunerState(
+            episode_id=payload.get("episode_id", ""),
             step_count=payload.get("step_count", 0),
+            model_id=payload.get("model_id", ""),
+            difficulty=payload.get("difficulty", "easy"),
+            submitted=payload.get("submitted", False),
+            benchmark_count=payload.get("benchmark_count", 0),
+            final_reward=payload.get("final_reward", 0.0),
         )

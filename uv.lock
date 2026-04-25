@@ -875,6 +875,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hf"
+version = "1.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huggingface-hub" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/b2/34532c3c266d77da0db396ee49afb60c5f7a7e517008d9bac97dd1c66e1a/hf-1.12.0.tar.gz", hash = "sha256:0ddf63014712b1c52a8de76d2125b74d35000f80879b893b50c85736024dcd31", size = 2476, upload-time = "2026-04-24T13:32:03.238Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/60/ec08a60aadbcd5a5634413b8de4e689bcc57fd687abd1f329d399cb6a6bc/hf-1.12.0-py3-none-any.whl", hash = "sha256:fc5088821d68e9efdb7ed27431be6552a2317ed0ed862e46cb16a4439acef922", size = 2418, upload-time = "2026-04-24T13:32:02.142Z" },
+]
+
+[[package]]
 name = "hf-gradio"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -958,7 +970,7 @@ wheels = [
 
 [[package]]
 name = "huggingface-hub"
-version = "1.11.0"
+version = "1.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -971,9 +983,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dc/89/e7aa12d8a6b9259bed10671abb25ae6fa437c0f88a86ecbf59617bae7759/huggingface_hub-1.11.0.tar.gz", hash = "sha256:15fb3713c7f9cdff7b808a94fd91664f661ab142796bb48c9cd9493e8d166278", size = 761749, upload-time = "2026-04-16T13:07:39.73Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/52/1b54cb569509c725a32c1315261ac9fd0e6b91bbbf74d86fca10d3376164/huggingface_hub-1.12.0.tar.gz", hash = "sha256:7c3fe85e24b652334e5d456d7a812cd9a071e75630fac4365d9165ab5e4a34b6", size = 763091, upload-time = "2026-04-24T13:32:08.674Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/02/4f3f8997d1ea7fe0146b343e5e14bd065fa87af790d07e5576d31b31cc18/huggingface_hub-1.11.0-py3-none-any.whl", hash = "sha256:42a6de0afbfeb5e022222d36398f029679db4eb4778801aafda32257ae9131ab", size = 645499, upload-time = "2026-04-16T13:07:37.716Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/2b/ef03ddb96bd1123503c2bd6932001020292deea649e9bf4caa2cb65a85bf/huggingface_hub-1.12.0-py3-none-any.whl", hash = "sha256:d74939969585ee35748bd66de09baf84099d461bda7287cd9043bfb99b0e424d", size = 646806, upload-time = "2026-04-24T13:32:06.717Z" },
 ]
 
 [[package]]
@@ -1387,6 +1399,30 @@ wheels = [
 ]
 
 [[package]]
+name = "neural-tuner-env"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "hf" },
+    { name = "openenv-core", extra = ["core"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hf", specifier = ">=1.12.0" },
+    { name = "openenv-core", extras = ["core"], specifier = ">=0.2.2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "numpy"
 version = "2.2.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1606,28 +1642,6 @@ core = [
     { name = "uvicorn" },
     { name = "websockets" },
 ]
-
-[[package]]
-name = "openenv-neural-tuner-env"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "openenv-core", extra = ["core"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "openenv-core", extras = ["core"], specifier = ">=0.2.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "opentelemetry-api"
