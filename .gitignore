@@ -11,3 +11,8 @@ wheels/
 personal
 notes.md
 .claude
+.env.local
+.hf_cache
+.pytest_cache
+outputs/
+wandb

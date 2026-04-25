@@ -7,7 +7,10 @@ from typing import Dict, Optional
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 
-from .models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
+try:
+    from .models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
+except ImportError:  # pragma: no cover - fallback for repo-root execution
+    from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
 
 
 class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, NeuralTunerState]):
@@ -33,6 +36,8 @@ class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, Neural
             payload["layer_id"] = action.layer_id
         if action.dtype is not None:
             payload["dtype"] = action.dtype
+        if action.sparsity is not None:
+            payload["sparsity"] = action.sparsity
         return payload
 
     def _parse_result(self, payload: Dict) -> StepResult[NeuralTunerObservation]:

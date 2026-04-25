@@ -6,11 +6,11 @@
 
 """Neural Tuner Env Environment."""
 
-from .client import NeuralTunerEnv
 from .models import NeuralTunerAction, NeuralTunerObservation
 
-__all__ = [
-    "NeuralTunerAction",
-    "NeuralTunerObservation",
-    "NeuralTunerEnv",
-]
+try:
+    from .client import NeuralTunerEnv
+except ImportError:  # pragma: no cover - client requires openenv runtime
+    NeuralTunerEnv = None
+
+__all__ = ["NeuralTunerAction", "NeuralTunerObservation", "NeuralTunerEnv"]

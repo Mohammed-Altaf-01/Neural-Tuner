@@ -1,0 +1,16 @@
+{
+  "pre_training_random_mean": 0.46502,
+  "pre_training_random_std": 0.1883426345785786,
+  "training_reward_mean": 0.22024500072002412,
+  "training_reward_last5_mean": 0.215310001373291,
+  "oracle_ceiling": 0.6428,
+  "avg_tool_calls_per_episode": 2.9,
+  "frac_zero_std_steps": 0.2,
+  "lift_vs_random": -0.24477499927997587,
+  "train_split_random_mean": 0.49272583333333336,
+  "train_split_heuristic_mean": 0.58815125,
+  "heldout_random_mean": 0.5254883333333333,
+  "heldout_baseline_mean": 0.760525,
+  "heldout_heuristic_mean": 0.6207,
+  "heldout_size": 20
+}
