@@ -1,0 +1,106 @@
+{
+  "meta": {
+    "scenario": "inception_v3_medium",
+    "n_runs_per_condition": 12,
+    "note": "Smoke ablations for benchmark cap and hidden sensitivity. Reward-shaping ablation requires training-path toggle and is not covered in this eval-only smoke."
+  },
+  "benchmark_cap_5": {
+    "random": {
+      "mean": 0.425125,
+      "std": 0.17763497274373272,
+      "min": 0.2702,
+      "max": 0.7622,
+      "n": 12
+    },
+    "baseline": {
+      "mean": 0.786,
+      "std": 0.0,
+      "min": 0.786,
+      "max": 0.786,
+      "n": 12
+    },
+    "heuristic": {
+      "mean": 0.6428,
+      "std": 0.0,
+      "min": 0.6428,
+      "max": 0.6428,
+      "n": 12
+    },
+    "benchmark_search_policy": {
+      "mean": 0.4014,
+      "std": 0.187233437184708,
+      "min": 0.263,
+      "max": 0.7756,
+      "n": 12
+    }
+  },
+  "benchmark_cap_20": {
+    "random": {
+      "mean": 0.425125,
+      "std": 0.17763497274373272,
+      "min": 0.2702,
+      "max": 0.7622,
+      "n": 12
+    },
+    "baseline": {
+      "mean": 0.786,
+      "std": 0.0,
+      "min": 0.786,
+      "max": 0.786,
+      "n": 12
+    },
+    "heuristic": {
+      "mean": 0.6428,
+      "std": 0.0,
+      "min": 0.6428,
+      "max": 0.6428,
+      "n": 12
+    },
+    "benchmark_search_policy": {
+      "mean": 0.4014,
+      "std": 0.187233437184708,
+      "min": 0.263,
+      "max": 0.7756,
+      "n": 12
+    }
+  },
+  "hidden_sensitivity_proxy": {
+    "heuristic_profile_first": {
+      "mean": 0.6428,
+      "std": 0.0,
+      "min": 0.6428,
+      "max": 0.6428,
+      "n": 12
+    },
+    "visible_sensitivity_direct_policy": {
+      "mean": 0.6428,
+      "std": 0.0,
+      "min": 0.6428,
+      "max": 0.6428,
+      "n": 12
+    },
+    "visible_sensitivity_direct_policy_step_count": {
+      "mean": 8.0,
+      "std": 0.0,
+      "min": 8.0,
+      "max": 8.0,
+      "n": 12
+    },
+    "reward_delta_mean": 0.0
+  },
+  "benchmark_cap_hillclimb_policy": {
+    "cap5": {
+      "reward_mean": 0.2775,
+      "reward_std": 0.025763378401651188,
+      "benchmarks_mean": 5.0,
+      "steps_mean": 12.416666666666666
+    },
+    "cap20": {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "benchmarks_mean": 9.583333333333334,
+      "steps_mean": 23.0
+    },
+    "delta_reward_mean": -0.2775
+  }
+}

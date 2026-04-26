@@ -486,6 +486,10 @@ A live integration would compile the agent's quantization/pruning plan to a QNN 
 
 Several hardware-side measurements that currently exist as separate engineering tools would feed directly into NeuralTuner as additional reward components and environment observations:
 
+In an ideal production loop, we would capture **before/after telemetry at every optimization action** (`quantize_layer`, `prune_layer`, `revert_layer`, `benchmark`) so the agent can see immediate impact, not just final episode outcome. The key signals are: power consumption, memory consumption, bandwidth compression, and task accuracy (using the model-appropriate metric). That per-step delta view would make policy decisions significantly more reliable because the agent can attribute each change to measurable hardware/quality effects.
+
+For this submission, direct on-device step-level telemetry is not yet wired into the environment, so we use a calibrated simulator and mock scenarios as a practical stand-in. The mock setup is intentionally structured to preserve realistic optimization trade-offs as a replcaement of actual telemetry environment.
+
 **DLBC — Deep Learning Bandwidth Compression**
 DLBC is Qualcomm's on-chip weight compression scheme that further reduces DRAM bandwidth for quantized models. Post-deployment, DLBC compression ratio is measurable via the QNN profiling SDK. A model that achieves high DLBC ratio in addition to meeting latency/memory constraints indicates an especially hardware-friendly quantization plan — this can be added as a bonus reward term.
 
