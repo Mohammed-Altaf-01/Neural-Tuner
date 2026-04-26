@@ -1,12 +1,3 @@
----
-title: Neural Tuner Env Environment Server
-emoji: 🥉
-colorFrom: purple
-colorTo: pink
-sdk: docker
-pinned: false
----
-
 # NeuralTuner Environment
 
 An OpenEnv-compatible RL environment that trains LLMs to optimize neural networks for Qualcomm Snapdragon edge hardware via per-layer quantization and structured pruning.

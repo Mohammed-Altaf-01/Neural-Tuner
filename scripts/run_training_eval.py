@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import statistics
 import sys
 from pathlib import Path
 
@@ -21,7 +20,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from rollout_eval import run_baseline_episode, run_heuristic_episode, run_random_episode
-from server.neural_tuner import NeuralTunerOpenEnv
+from scripts.neural_tuner import NeuralTunerOpenEnv
 from server.neural_tuner_env_environment import NeuralTunerEnvironment
 from training_utils import load_jsonl, mean, split_scenarios, write_json
 
@@ -145,7 +144,8 @@ def main() -> int:
         torch_empty_cache_steps=1,
         logging_steps=1,
         report_to="wandb" if wandb_key else "none",
-        use_cpu=not torch.backends.mps.is_available(),
+        # Force CPU for scripted sweeps to avoid MPS/offload meta-device backward errors.
+        use_cpu=True,
         bf16=False,
         fp16=False,
         use_vllm=False,
