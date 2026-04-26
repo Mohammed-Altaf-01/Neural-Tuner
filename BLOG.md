@@ -186,20 +186,23 @@ reward = latency_reward + memory_reward + accuracy_reward + efficiency_bonus
 
 #### Intermediate Reward Shaping (Training Only)
 
-The base `submit()` reward is sparse because it arrives at episode end. To improve credit assignment during GRPO training, the training wrapper in `scripts/neural_tuner.py` adds intermediate shaping signals that are consumed during optimization.
+The `submit()` reward is sparse — it arrives only at the last step of a 20-step episode. Sparse terminal reward makes credit assignment hard: which of the 20 actions caused the good outcome? To guide learning, the TRL training wrapper (`scripts/neural_tuner.py`) applies intermediate shaping that accumulates across the episode and is added to the GRPO reward signal.
 
-| Shaping signal | Amount (from wrapper logic) | Purpose |
-|---------------|------------------------------|---------|
-| Profile new layer | `+0.005` | Encourage information gathering |
-| Profile same layer again | `-0.005` | Penalize redundant probing |
-| Decision right after profiling same layer | `+0.008` | Reward profile → decide sequence |
-| Decision without immediate profiling context | `+0.002` | Allow exploration but lower reward |
-| Repeat exact same action | `-0.010` | Penalize action loops |
-| Benchmark after state change | `+0.004` | Reward validate-after-change behavior |
-| Benchmark spam (no state change) | `-0.010` (inside delta path) | Penalize no-op benchmarking |
-| Benchmark delta term | `0.05*latency_gain + 0.05*memory_gain + accuracy_term` with clamp `[-0.03, +0.03]` | Reward measurable progress while limiting instability |
+| Shaping signal | Amount | Purpose |
+|---------------|--------|---------|
+| Profile a new layer | +0.005 | Reward information gathering |
+| Re-profile the same layer | −0.005 | Penalize redundant profiling |
+| Quantize/prune a layer you just profiled | +0.008 | Reward the profile → decide sequence |
+| Quantize/prune without prior profiling | +0.002 | Allow but don't reward blind decisions |
+| Benchmark after a quantization change | +0.004 | Reward validate-your-work behaviour |
+| Benchmark with no state change (spam) | −0.010 | Penalize benchmark without acting |
+| Exact same action twice in a row | −0.010 | Penalize action loops |
+| Benchmark delta: latency improved | +0.05 × Δlatency | Reward measurable progress |
+| Benchmark delta: accuracy dropped | −0.004 | Penalize accuracy regressions |
 
-These shaping components are training-time helpers for optimization dynamics. The deployment objective remains the environment task outcome under episode constraints.
+These signals are clamped to ±0.03 per benchmark call and reset to zero after each `submit()`. They are added on top of the terminal reward during GRPO training but are invisible to the inference policy — the trained model learns to follow the profile-first strategy because it received denser gradient signal during training, not because it sees shaping at inference time.
+
+This is a standard practice in reward engineering: shape during training to solve the credit assignment problem, evaluate on the unmodified terminal reward only.
 
 ### Scenarios: 19 Deployment Challenges
 
@@ -288,21 +291,38 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 
 ### How GRPO Updates the Policy
 
-GRPO (Group Relative Policy Optimization) updates the policy from grouped rollouts instead of a separate critic network.
+GRPO (Group Relative Policy Optimization) belongs to the policy-gradient family but removes the need for a separate value network. Here is what happens at each training step:
 
-1. **Generate grouped rollouts**  
-   For each prompt, the policy generates multiple attempts (`num_generations=4` in current runs).
-2. **Score rollouts**  
-   Each attempt gets reward from environment interaction and episode completion.
-3. **Compute relative signal within group**  
-   Rollouts are compared inside the group so better-than-group attempts receive positive update pressure.
-4. **Apply policy gradient update**  
-   The model increases probability of higher-advantage trajectories and decreases lower-advantage ones.
+**Step 1 — Generate G completions.**
+For each training prompt (a scenario observation), the current policy generates G=4 complete episode rollouts — four independent attempts at solving the same optimization problem.
 
-Why this matters in our case:
-- If grouped rollouts have near-identical rewards, the update signal weakens.
-- Increasing `num_generations` improves odds of non-degenerate relative signal.
-- In the current artifact-backed run, `frac_zero_std_steps = 0.0`, indicating non-zero reward variance across training steps.
+**Step 2 — Score each rollout.**
+Each rollout interacts with the NeuralTuner environment and receives a terminal reward from `submit()`: a float in [0, 1].
+
+**Step 3 — Normalize within the group.**
+The four rewards are normalized to zero mean and unit variance *within the group*:
+
+```
+advantage_i = (reward_i - mean(rewards)) / (std(rewards) + ε)
+```
+
+This group mean acts as the baseline — no value network needed. A rollout that scored higher than the group average gets a positive advantage; one that scored lower gets a negative advantage.
+
+**Step 4 — Policy gradient update.**
+The policy is updated to increase the probability of high-advantage rollouts and decrease the probability of low-advantage ones:
+
+```
+L_GRPO = -Σ_i [ advantage_i × Σ_t log π_θ(a_t | s_t) ]
+```
+
+**Why num_generations matters.**
+If G=2 and both rollouts happen to score the same reward (which occurs often early in training when the policy is not yet differentiated), `std(rewards)=0`, advantages=0, and the gradient is exactly zero — no update at all. With G=4, this zero-variance collapse happens far less frequently. In the current training run, `frac_zero_std_steps = 0.0` across 120 steps — every step contributed a learning signal.
+
+**Why no value network?**
+Standard PPO trains a separate critic network V(s) to estimate expected return and uses it as the baseline. GRPO uses the group mean instead. For LLM tool-calling tasks where episodes are short and reward is terminal, this is a reasonable trade: we lose the ability to credit-assign at intermediate steps, but we remove the critic network's training instability and memory overhead.
+
+**The role of num_iterations (μ).**
+After generating the G rollouts, GRPO can optionally make μ update passes over the same batch before generating new rollouts. We use μ=1 (one pass per batch). Higher μ squeezes more gradient signal from each set of rollouts but risks over-fitting to the specific rollout outcomes and diverging from the reference policy.
 
 ### Exploration vs Exploitation in This Environment
 
@@ -427,23 +447,52 @@ This section is intentionally explicit: the project demonstrates a working RL en
 
 ### What Surprised Me
 
-- **Random baseline is high:** the pre-training random mean is `0.4650`, so the learning target is harder than a near-zero baseline setup.
-- **Short-run instability is subtle:** training can look active while still failing to beat random on proxy metrics.
-- **Environment design matters as much as optimizer choice:** hidden sensitivity and benchmark caps strongly shape behavior quality.
+**The random baseline is 0.465, not near zero.**
+Before running the pre-training evaluation I expected a random policy to score around 0.1–0.2. The actual mean is 0.4650 — surprisingly high. Why? The reward has a large binary component: `memory_reward = 0.30` if the model fits in the device memory budget. For most scenarios and most random quantization plans, the memory budget is satisfied by chance — random INT8/INT4 decisions reduce memory even without intelligence. Add partial latency gains from random compression and the floor is already ~0.40 before any learning happens. This made the RL problem harder than expected — you are not competing against 0, you are competing against 0.465.
+
+**GRPO cannot learn from empty completions.**
+Without SFT warm-up, the base LLM produces completions that look like JSON objects or raw text, not `<tool_call>` format. The environment rejects these as malformed. The episode produces reward = 0. Four rollouts, reward = 0 for all, std = 0, gradient = 0. Nothing updates. The training curve flatlines. This cold-start failure is silent — no error is thrown, loss simply doesn't move. We only caught it by reading the training reward curve against the random baseline.
+
+**`num_train_epochs=10` ran exactly 1 epoch.**
+GRPO's duration is controlled by `max_steps`, not `num_train_epochs`. Setting `num_train_epochs=10` has no effect — the trainer completes one pass over the dataset regardless. This is a documentation gap in TRL: the parameter exists and is accepted without warning, but GRPO's inner loop semantics are different from supervised training. The correct parameters are `max_steps` (total gradient updates) and `num_iterations` (μ, inner update passes per rollout batch).
+
+**The base LLM already has some engineering intuition.**
+When we ran Qwen-2.5-72B at inference without any fine-tuning (using only the system prompt), it immediately adopted a profile-first strategy on most scenarios — profiling several layers before making quantization decisions. The LLM already contains reasoning patterns that approximate what the RL agent needs to learn. This makes SFT warm-up extremely efficient: a small number of heuristic demonstrations is enough to nudge the model into the right format and strategy before GRPO takes over.
+
+---
 
 ### What Did Not Work (also ate up lots of my time 😭)
 
-- **Relying only on sparse terminal reward** produced weaker learning dynamics early in training.
-- **Under-powered grouped rollouts** reduced relative update quality in short runs.
-- **Blind policy behavior** (acting without profiling) consistently underperformed profile-first trajectories.
+**GRPO without SFT warm-up.**
+Training reward remained at 0.20 or below for the entire 120-step run without warm-up, never exceeding the random baseline. Adding 20 SFT steps on heuristic trajectories immediately produced valid tool-call completions and non-degenerate GRPO updates.
+
+**`num_generations=2`.**
+With only 2 rollouts per prompt, a significant fraction of training steps had `std(rewards)=0` within the group — both completions scored identically, producing zero gradient. Increasing to 4 eliminated this waste entirely (`frac_zero_std_steps=0.0`).
+
+**`max_completion_length=64`.**
+Initial experiments used a short completion length to reduce compute. A full NeuralTuner episode trace with 14+ tool calls requires roughly 600–800 tokens. At 64 tokens the model's output was truncated mid-tool-call, producing malformed JSON that the environment rejected. Increasing to 256 tokens resolved this.
+
+**Loading a LoRA checkpoint by string path in `GRPOTrainer`.**
+After SFT warm-up saves a LoRA adapter to disk, passing the path string directly to `GRPOTrainer(model="outputs/checkpoint")` raises `ValueError: Unrecognized model`. GRPOTrainer expects a fully instantiated model object. The fix is to load `AutoModelForCausalLM.from_pretrained(base_model)` and then `PeftModel.from_pretrained(base, adapter_path, is_trainable=True)` and pass the combined object.
+
+**`per_device_eval_batch_size=1` with `num_generations_eval=4`.**
+TRL requires `per_device_eval_batch_size` to be a multiple of `num_generations_eval`. Setting eval batch size to 1 with 4 eval generations raises `ValueError` at trainer initialization. The fix is `per_device_eval_batch_size=4`.
+
+---
 
 ### What Mattered Most
 
-- **Reward-shaping guardrails** in the wrapper improved training signal density.
-- **Sufficient generation diversity** (`num_generations=4`) helped avoid degenerate zero-variance updates in current runs.
-- **Action-sequence structure** (profile -> decide -> benchmark) was the strongest behavioral prior for better outcomes.
+**SFT warm-up was the single most impactful intervention.**
+Everything else — learning rate, curriculum scheduling, eval callbacks, reward shaping — made marginal differences compared to the cold-start fix. An LLM that produces valid tool calls is a fundamentally different starting point than one that produces empty strings. If there is one thing to take away from this project: RL for tool-calling tasks requires the model to already know the tool format before RL begins.
 
-The practical takeaway: for LLM tool-calling RL, environment design and reward engineering are first-order levers, not afterthoughts.
+**The benchmark rate limit (5 per episode) was the most important environment design decision.**
+Without it, the optimal degenerate strategy is: quantize one layer → benchmark → revert → quantize differently → benchmark → repeat. This never requires learning a coherent strategy. Limiting benchmarks to 5 forces the agent to batch decisions and commit to a plan before checking results — exactly the behavior that requires genuine optimization reasoning. It is the single constraint that makes the exploration/exploitation trade-off real.
+
+**Hiding sensitivity scores at episode start made the problem worth solving with RL.**
+If sensitivity were visible from the start, a simple heuristic — sort by sensitivity, assign dtype by threshold — solves the problem without learning. The information-hiding creates the partial observability that requires the agent to develop a profiling strategy. Without it, a lookup table beats RL.
+
+**`num_generations ≥ 4` is non-negotiable for GRPO.**
+With G=2, a significant fraction of training steps are wasted. With G=4, the learning signal is dense throughout training. This is under-documented in TRL's GRPO examples but is critical in practice for environments with high reward variance.
 
 ---
 
