@@ -182,7 +182,3 @@ git push space master
 Manifest: `openenv.yaml` — runtime: `fastapi`, entrypoint: `server.app:app`, port: `8000`.
 
 ---
-
-## License
-
-BSD-style — see `LICENSE` in the root of the repository.

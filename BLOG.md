@@ -8,7 +8,7 @@
 
 ## The Problem: Manual Model Optimization Is a Bottleneck at Scale
 
-*(FYI I'm SDE at AISW team @qualcomm)* Deploying a neural network to a Qualcomm Snapdragon-powered device — a smartphone, an ADAS ECU, a laptop NPU, an XR headset — is not as simple as exporting a PyTorch model. Every production deployment goes through a hardware-specific optimization pipeline that today relies heavily on expert engineers.
+*(FYI I'm SDE at AI-SW team @qualcomm)* Deploying a neural network to a Qualcomm Snapdragon-powered device — a smartphone, an ADAS ECU, a laptop NPU, an XR headset — is not as simple as exporting a PyTorch model. Every production deployment goes through a hardware-specific optimization pipeline that today relies heavily on expert engineers.
 
 The workflow looks roughly like this:
 
