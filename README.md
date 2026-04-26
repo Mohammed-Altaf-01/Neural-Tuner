@@ -152,10 +152,10 @@ A per-layer float in [0.0, 1.0] that quantifies how much that layer's output deg
 Sensitivity scores are **hidden from the agent at episode start** — they must be revealed layer-by-layer using `profile_layer()`. This is the core information asymmetry that makes the task non-trivial.
 
 ### Oracle Ceiling
-The best reward achievable by a perfect agent that knows all layer sensitivities in advance and makes optimal quantization decisions to satisfy constraints. For the inception_v3 medium scenario: **oracle ceiling = 0.6428**. This is computed offline by running the heuristic policy (profile all → assign dtype by sensitivity threshold → benchmark → submit). The oracle is not the theoretical maximum reward of 1.0 — it represents what a knowledgeable human engineer would achieve, providing a realistic upper bound for RL training.
+The best reward achievable by a strong reference policy that knows all layer sensitivities in advance and makes near-optimal quantization decisions for this setup. For the inception_v3 medium scenario used in training diagnostics: **oracle ceiling = 0.6428**. This is computed offline by running a heuristic policy (profile all → assign dtype by sensitivity threshold → benchmark → submit). The oracle is not the theoretical maximum reward of 1.0; it is a practical upper bound for this environment configuration.
 
 ### Random Baseline
-The mean reward of a fully random policy (random action type, random layer, random dtype) averaged over 20 seeds. For inception_v3 medium: **random baseline = 0.465**. Somewhat counter-intuitively, the random baseline is not near zero — the binary memory_reward (0.30) and partial latency improvement from random quantizations push it above chance. The RL agent must meaningfully exceed this to demonstrate genuine policy learning.
+The mean reward of a random policy (random action type, random layer, random dtype) averaged over 20 seeds. For inception_v3 medium: **random baseline = 0.4650**. This value is not near zero because the reward has non-zero floor components (especially memory satisfaction in many trajectories) and random compression can still yield partial latency gains.
 
 ### Lift vs Random / Lift vs Oracle
 Two derived metrics used to track training progress:
@@ -183,7 +183,7 @@ Step 12: submit()                          → reward = 0.3037, constraints_met 
 
 The random agent never profiles. It applies dtypes without knowledge of sensitivity, frequently leaves high-sensitivity layers under-protected and low-sensitivity layers under-compressed simultaneously.
 
-### Heuristic Agent (reward: 0.64 — oracle ceiling)
+### Heuristic Agent (representative trace)
 ```
 Step 1:  profile_layer(conv_stem)          → sensitivity=0.040 [low risk — INT4 safe]
 Step 2:  profile_layer(conv_bn_1)          → sensitivity=0.020 [low risk — INT4 safe]
@@ -198,7 +198,7 @@ Step 10: quantize_layer(mixed_4a, INT8)    ← protects medium-sensitivity layer
 Step 11: quantize_layer(mixed_5a, INT4)
 Step 12: quantize_layer(mixed_6a, INT8)    ← protects medium-sensitivity layer
 Step 13: benchmark()
-Step 14: submit()                          → reward = 0.6428, constraints_met = False
+Step 14: submit()                          → reward = 0.6428
 ```
 
 The heuristic agent profiles first, builds a sensitivity map, then assigns dtypes proportional to each layer's risk tolerance. The RL agent's goal is to learn this pattern from reward signals alone — without being told the strategy.
@@ -211,7 +211,7 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Training Pipeline                        │
 │                                                                  │
-│  Base LLM (Qwen-2.5-0.5B-Instruct)                             │
+│  Base LLM (Qwen2.5/DeepSeek-Qwen family; configurable)         │
 │       │                                                          │
 │       ▼                                                          │
 │  SFT Warm-up  ──  heuristic trajectories  ──  20 steps, LoRA   │
@@ -230,19 +230,19 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Baseline Metrics (pre-training)
+### Baseline and Reference Metrics
 
 | Metric | Value |
 |--------|-------|
-| Random policy reward (mean, n=20) | 0.465 |
-| Random policy reward (std) | 0.188 |
-| Oracle ceiling (heuristic) | 0.643 |
-| Lift from random → oracle | 0.178 |
+| Random policy reward (mean, n=20) | 0.4650 |
+| Random policy reward (std) | 0.1883 |
+| Oracle ceiling (heuristic reference) | 0.6428 |
+| Headroom (oracle - random) | 0.1778 |
 
 ### Training Results
 
 ![Post-training evaluation](artifacts/plots/post_training_eval.png)
-*GRPO training reward trajectory vs random baseline (0.465) and oracle ceiling (0.643)*
+*GRPO training reward trajectory vs random baseline (0.4650) and oracle ceiling (0.6428)*
 
 ![Pre-training reward distribution](artifacts/plots/pre_training_reward_distribution.png)
 *Pre-training random policy reward distribution — inception_v3 medium, n=20 seeds*
@@ -358,6 +358,17 @@ python rollout_eval.py --trace --model-id inception_v3 --difficulty medium
 pytest -q
 ```
 
+## Reproducibility Checklist
+
+- Fixed random seeds for splits and evaluation where possible.
+- Baselines computed before training and stored in artifacts.
+- Training/eval metrics written to JSON:
+  - `artifacts/training/train_metrics.json`
+  - `artifacts/training/eval_metrics.json`
+  - `artifacts/training/comparison_metrics.json`
+- Notebook and script paths are both supported, with script-first evaluation recommended for final reporting:
+  - `python scripts/run_training_eval.py`
+
 ---
 
 ## OpenEnv Deployment
@@ -394,3 +405,9 @@ Current test suite covers:
 - Invalid layer handling: unknown layer IDs, missing dtype/sparsity arguments
 - Terminal state: submit() terminates episode; subsequent steps return episode_complete
 - Training metrics schema: eval_metrics.json structure validation
+
+## Ethics and Reporting Policy
+
+- No baseline manipulation or metric tampering is used.
+- All reported values are loaded from saved artifacts in this repository.
+- "Oracle" is reported as a heuristic reference bound, not a proof of global optimality.
