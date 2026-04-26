@@ -38,7 +38,7 @@ Quantization and pruning effects are **not independent**. On HTP hardware, they 
 
 ## Environment Design
 
-The environment is the core contribution. It is built as an **OpenEnv-compatible FastAPI server** that exposes a stateful, multi-step RL episode interface to any LLM agent.
+**OpenEnv-compatible FastAPI server** with a stateful, multi-step RL episode interface to any LLM agent.
 
 ### State Space
 
@@ -162,21 +162,12 @@ Two derived metrics used to track training progress:
 - **Lift vs Random** = eval_reward − random_baseline (how much better than random)
 - **Lift vs Oracle** = (eval_reward − random_baseline) / (oracle_ceiling − random_baseline) (% progress from random to oracle)
 
-### GRPO (Group Relative Policy Optimization)
-The RL training algorithm used to fine-tune the LLM. GRPO belongs to the family of policy-gradient methods but avoids the need for a separate value/critic network. Instead, for each prompt it generates `G` completions, computes their rewards, normalises rewards within the group (mean=0, std=1), and uses the normalised advantages as per-token policy gradient weights. The key hyperparameter is `num_generations` (G) — with G=2 roughly 24% of steps produce zero-std groups (zero gradient), making G≥4 necessary for stable training.
-
-### SFT Warm-up
-Before GRPO, a brief Supervised Fine-Tuning phase is run on heuristic-generated trajectories. Without this, the model's cold-start completions are often empty or malformed tool calls — GRPO cannot learn from zero-length completions because there is no policy gradient signal to propagate. SFT warm-up teaches the model the correct tool-call format and a basic profile-first strategy, giving GRPO a non-degenerate starting point.
-
-### Curriculum Learning
-Training scenarios are scheduled from easy → medium → hard across the GRPO training run. Early in training, the model sees easy scenarios (achievable with uniform INT8) to establish basic reward signals. As training progresses, harder scenarios requiring mixed-precision and structured pruning are introduced. This prevents the model from learning a brittle strategy optimised for easy scenarios that fails to generalise.
-
 ### Structured Pruning
 A compression technique that removes entire channels or filters from convolutional layers (as opposed to unstructured pruning which zeros individual weights). Structured pruning produces dense weight matrices with fewer channels, enabling direct speedup without sparse-format overhead. The Snapdragon HTP has dedicated hardware for sparse workloads — structured pruning at MEDIUM (50%) or HIGH (75%) sparsity maps directly to accelerated execution paths on-chip.
 
 ---
 
-## Behavioral Evidence: Why the RL Problem Is Hard
+## What the Agent Must Learn: Random vs Expert Episode Traces
 
 The trained agent's target behavior — the strategy that earns high reward — is clearly visible by comparing a random agent to a heuristic agent on the same scenario:
 
@@ -258,6 +249,66 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 
 ---
 
+## Future Work and Live Hardware Integration
+
+The current NeuralTuner simulates hardware behavior through calibrated factor tables. The natural next step is to close the loop with **real on-device measurement** — and to expand the action surface from simulation to live deployment.
+
+### On-Device Inference Validation (Android / Windows / Automotive / XR)
+
+Snapdragon SoCs run across four distinct runtime environments, each with its own SDK and profiling toolchain:
+
+| Platform | SDK | Use case |
+|----------|-----|---------|
+| Android (Snapdragon 8 Gen 4) | Qualcomm AI Engine Direct (QNN) | Mobile vision, on-device LLMs |
+| Windows (Snapdragon X Elite) | QNN Windows SDK + DirectML | Copilot+ PC workloads |
+| Automotive (Snapdragon Ride) | Snapdragon Ride SDK | ADAS, Autonomous Driving (SAE L2–L4) |
+| XR (Snapdragon XR2 Gen 2) | Snapdragon Spaces SDK | Mixed reality, spatial computing |
+
+A live integration would compile the agent's quantization/pruning plan to a QNN `.dlc` (Deep Learning Container) file using the **Qualcomm AI Model Efficiency Toolkit (AIMET)**, deploy it to the target device via ADB (Android) or appropriate device bridge, run inference, and collect hardware telemetry back into the RL environment as real reward signal.
+
+### Real Hardware Telemetry as RL Signal
+
+Several hardware-side measurements that currently exist as separate engineering tools would feed directly into NeuralTuner as additional reward components and environment observations:
+
+**DLBC — Deep Learning Bandwidth Compression**
+DLBC is Qualcomm's on-chip weight compression scheme that further reduces DRAM bandwidth for quantized models. Post-deployment, DLBC compression ratio is measurable via the QNN profiling SDK. A model that achieves high DLBC ratio in addition to meeting latency/memory constraints indicates an especially hardware-friendly quantization plan — this can be added as a bonus reward term.
+
+**SWC — Sparse Weight Compression**
+SWC measures how efficiently the structured pruning maps to the HTP's sparse matrix hardware. After deploying a pruned model, the HTP reports the effective sparsity utilization — a pruning configuration that achieves HIGH sparsity without triggering HTP sparsity format mismatches gives a higher SWC ratio. This provides direct feedback on whether the agent's pruning decisions are exploiting the hardware correctly.
+
+**Sysmon Logs**
+Qualcomm's System Monitor (`sysmon`) captures real-time SoC telemetry: DSP/CPU/GPU utilization, DRAM bandwidth, thermal throttle events, and power consumption in milliwatts. Sysmon data would let the reward function penalize thermal-bound configurations (where the model technically meets latency targets in isolation but causes thermal throttling under sustained load) and reward power-efficient configurations that stay within thermal design power (TDP) budgets.
+
+**FARF Logs (Fast and Reliable Filtering)**
+FARF is Qualcomm's internal debug logging framework used on the Hexagon DSP. FARF logs capture DSP-side execution traces including HTP execution time per layer, DMA transfer overhead, and any precision fallbacks (where the HTP silently promotes INT4 ops to INT8 due to hardware limitations). This data would allow NeuralTuner to detect and penalize plans that look good in simulation but trigger precision promotion on real hardware — a critical gap between the current simulator and real deployment.
+
+**Power Configuration Logs**
+Power profiling logs capture voltage/frequency scaling decisions made by the Snapdragon Power Management IC (PMIC) during model inference. A quantization plan that keeps the device in a lower DVFS (Dynamic Voltage and Frequency Scaling) bin achieves equivalent performance at lower power — a property the current simulator cannot capture but that is highly relevant for battery-operated devices.
+
+### Closed-Loop RL Architecture (Future Vision)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                   Live Hardware RL Loop                           │
+│                                                                   │
+│  LLM Agent                                                        │
+│     │  tool calls                                                 │
+│     ▼                                                             │
+│  NeuralTuner Env  ──► AIMET compile  ──► QNN .dlc               │
+│     ▲                                        │                    │
+│     │  reward signal                         ▼                    │
+│     │                               Snapdragon device             │
+│     │                                  (Android/Auto/XR)         │
+│     │                                        │                    │
+│     └──── sysmon + FARF + DLBC + SWC ◄──────┘                   │
+│           (real latency, power, sparsity utilization)            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+This architecture would make NeuralTuner the first RL environment where LLM-driven optimization decisions are validated by — and trained against — real SoC telemetry rather than a surrogate simulator. The RL agent would learn not just to satisfy constraint budgets on paper, but to produce configurations that are genuinely efficient on Snapdragon silicon.
+
+---
+
 ## Repository Structure
 
 ```
@@ -328,66 +379,6 @@ Push to Hugging Face:
 ```bash
 git push space master
 ```
-
----
-
-## Future Work and Live Hardware Integration
-
-The current NeuralTuner simulates hardware behavior through calibrated factor tables. The natural next step is to close the loop with **real on-device measurement** — and to expand the action surface from simulation to live deployment.
-
-### On-Device Inference Validation (Android / Windows / Automotive / XR)
-
-Snapdragon SoCs run across four distinct runtime environments, each with its own SDK and profiling toolchain:
-
-| Platform | SDK | Use case |
-|----------|-----|---------|
-| Android (Snapdragon 8 Gen 4) | Qualcomm AI Engine Direct (QNN) | Mobile vision, on-device LLMs |
-| Windows (Snapdragon X Elite) | QNN Windows SDK + DirectML | Copilot+ PC workloads |
-| Automotive (Snapdragon Ride) | Snapdragon Ride SDK | ADAS, Autonomous Driving (SAE L2–L4) |
-| XR (Snapdragon XR2 Gen 2) | Snapdragon Spaces SDK | Mixed reality, spatial computing |
-
-A live integration would compile the agent's quantization/pruning plan to a QNN `.dlc` (Deep Learning Container) file using the **Qualcomm AI Model Efficiency Toolkit (AIMET)**, deploy it to the target device via ADB (Android) or appropriate device bridge, run inference, and collect hardware telemetry back into the RL environment as real reward signal.
-
-### Real Hardware Telemetry as RL Signal
-
-Several hardware-side measurements that currently exist as separate engineering tools would feed directly into NeuralTuner as additional reward components and environment observations:
-
-**DLBC — Deep Learning Bandwidth Compression**
-DLBC is Qualcomm's on-chip weight compression scheme that further reduces DRAM bandwidth for quantized models. Post-deployment, DLBC compression ratio is measurable via the QNN profiling SDK. A model that achieves high DLBC ratio in addition to meeting latency/memory constraints indicates an especially hardware-friendly quantization plan — this can be added as a bonus reward term.
-
-**SWC — Sparse Weight Compression**
-SWC measures how efficiently the structured pruning maps to the HTP's sparse matrix hardware. After deploying a pruned model, the HTP reports the effective sparsity utilization — a pruning configuration that achieves HIGH sparsity without triggering HTP sparsity format mismatches gives a higher SWC ratio. This provides direct feedback on whether the agent's pruning decisions are exploiting the hardware correctly.
-
-**Sysmon Logs**
-Qualcomm's System Monitor (`sysmon`) captures real-time SoC telemetry: DSP/CPU/GPU utilization, DRAM bandwidth, thermal throttle events, and power consumption in milliwatts. Sysmon data would let the reward function penalize thermal-bound configurations (where the model technically meets latency targets in isolation but causes thermal throttling under sustained load) and reward power-efficient configurations that stay within thermal design power (TDP) budgets.
-
-**FARF Logs (Fast and Reliable Filtering)**
-FARF is Qualcomm's internal debug logging framework used on the Hexagon DSP. FARF logs capture DSP-side execution traces including HTP execution time per layer, DMA transfer overhead, and any precision fallbacks (where the HTP silently promotes INT4 ops to INT8 due to hardware limitations). This data would allow NeuralTuner to detect and penalize plans that look good in simulation but trigger precision promotion on real hardware — a critical gap between the current simulator and real deployment.
-
-**Power Configuration Logs**
-Power profiling logs capture voltage/frequency scaling decisions made by the Snapdragon Power Management IC (PMIC) during model inference. A quantization plan that keeps the device in a lower DVFS (Dynamic Voltage and Frequency Scaling) bin achieves equivalent performance at lower power — a property the current simulator cannot capture but that is highly relevant for battery-operated devices.
-
-### Closed-Loop RL Architecture (Future Vision)
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                   Live Hardware RL Loop                           │
-│                                                                   │
-│  LLM Agent                                                        │
-│     │  tool calls                                                 │
-│     ▼                                                             │
-│  NeuralTuner Env  ──► AIMET compile  ──► QNN .dlc               │
-│     ▲                                        │                    │
-│     │  reward signal                         ▼                    │
-│     │                               Snapdragon device             │
-│     │                                  (Android/Auto/XR)         │
-│     │                                        │                    │
-│     └──── sysmon + FARF + DLBC + SWC ◄──────┘                   │
-│           (real latency, power, sparsity utilization)            │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-This architecture would make NeuralTuner the first RL environment where LLM-driven optimization decisions are validated by — and trained against — real SoC telemetry rather than a surrogate simulator. The RL agent would learn not just to satisfy constraint budgets on paper, but to produce configurations that are genuinely efficient on Snapdragon silicon.
 
 ---
 
