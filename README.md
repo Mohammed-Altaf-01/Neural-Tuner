@@ -7,8 +7,6 @@ sdk: docker
 pinned: false
 ---
 
-# Neural Tuner Env Environment
-# NeuralTuner: Hardware-Aware RL Environment for LLMs
 # NeuralTuner: An RL Environment for Hardware-Aware Neural Network Optimization on Snapdragon
 
 > *Teaching an LLM to think like a Qualcomm optimization engineer — one layer at a time.*
