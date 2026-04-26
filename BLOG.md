@@ -334,6 +334,7 @@ Exploration and exploitation are not abstract here; they are induced by environm
 - **Bad policy behavior** is looping tool calls or blind aggressive compression without profiling.
 
 This is why benchmark budget and hidden sensitivity are core design choices: they force strategic sequencing instead of trivial brute-force probing.
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Training Pipeline                       │
 │                                                                 │
@@ -354,7 +355,7 @@ This is why benchmark budget and hidden sensitivity are core design choices: the
 │       ▼                                                         │
 │  Trained LoRA checkpoint → inference.py → 19 scenarios          │
 └─────────────────────────────────────────────────────────────────┘
-
+```
 ### Baseline and Reference Metrics
 
 | Metric | Value |
