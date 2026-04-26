@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-Scenario definitions for NeuralTuner — 15 scenarios across 5 models × 3 difficulties.
+Scenario definitions for NeuralTuner — 19 scenarios across 5 models × 3 difficulties.
 
 Constraints are calibrated against actual layer sums so targets are achievable
 with intelligent quantization but require careful sensitivity management.
@@ -124,6 +124,22 @@ MEDIUM_SCENARIOS: List[Scenario] = [
         "BMW DriveNet for a production HW ECU with tight thermal envelope. "
         "Segmentation and lane heads are fragile under INT4.",
     ),
+    Scenario(
+        "resnet50_medium_mem",
+        "resnet50",
+        "medium",
+        _make_constraints("resnet50", lat_frac=0.55, mem_frac=0.30, min_acc=0.90),
+        "ResNet-50 on a memory-constrained wearable SoC. "
+        "Latency budget is relaxed — the bottleneck is RAM. Drive memory down with INT4.",
+    ),
+    Scenario(
+        "gm_perception_medium_acc",
+        "gm_perception_net",
+        "medium",
+        _make_constraints("gm_perception_net", lat_frac=0.50, mem_frac=0.52, min_acc=0.93),
+        "GM Perception Net in a safety-critical ADAS pipeline — accuracy floor raised to 0.93. "
+        "Latency/memory targets are reachable but sensitive heads must stay at FP16.",
+    ),
 ]
 
 # ── Hard (need ~62% latency reduction, tight memory, accuracy ≥ 0.92) ─────
@@ -168,6 +184,22 @@ HARD_SCENARIOS: List[Scenario] = [
         _make_constraints("bmw_drive_net", lat_frac=0.38, mem_frac=0.36, min_acc=0.92),
         "BMW DriveNet on an L4 autonomous ECU with simultaneous segmentation and depth. "
         "All three output heads are highly sensitive — careful mixed-precision required.",
+    ),
+    Scenario(
+        "inception_v3_hard_mem",
+        "inception_v3",
+        "hard",
+        _make_constraints("inception_v3", lat_frac=0.42, mem_frac=0.28, min_acc=0.92),
+        "Inception V3 on a memory-starved edge node — RAM is the binding constraint. "
+        "Latency target is slightly relaxed but memory must drop below 28% of baseline.",
+    ),
+    Scenario(
+        "mobilenet_v3_hard_acc",
+        "mobilenet_v3",
+        "hard",
+        _make_constraints("mobilenet_v3", lat_frac=0.40, mem_frac=0.40, min_acc=0.95),
+        "MobileNet V3 in a medical-grade wearable with a strict 95% accuracy floor. "
+        "Compression room is narrow — only the lowest-sensitivity layers can go INT4.",
     ),
 ]
 
