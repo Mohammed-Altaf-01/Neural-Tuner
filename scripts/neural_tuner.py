@@ -1,6 +1,7 @@
-from server.neural_tuner_env_environment import NeuralTunerEnvironment
-from models import NeuralTunerAction
 from typing import Optional
+
+from models import NeuralTunerAction
+from server.neural_tuner_env_environment import NeuralTunerEnvironment
 
 
 class NeuralTunerOpenEnv:
@@ -50,7 +51,13 @@ class NeuralTunerOpenEnv:
         self._pending_action_quality = 0.0
         return obs.output
 
-    def _step(self, action_type: str, layer_id: Optional[str] = None, dtype: Optional[str] = None, sparsity: Optional[str] = None) -> str:
+    def _step(
+        self,
+        action_type: str,
+        layer_id: Optional[str] = None,
+        dtype: Optional[str] = None,
+        sparsity: Optional[str] = None,
+    ) -> str:
         action_signature = (action_type, layer_id, dtype, sparsity)
         prev_action_signature = self._last_action_signature
         if self._last_action_signature == action_signature:
@@ -182,6 +189,3 @@ class NeuralTunerOpenEnv:
         self._pending_benchmark_delta = 0.0
         self._pending_action_quality = 0.0
         return components
-
-
-

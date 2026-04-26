@@ -25,22 +25,13 @@ Episode flow:
 from typing import Dict, Optional, Set
 from uuid import uuid4
 
-try:
-    from openenv.core.env_server.interfaces import Environment
-except ImportError:  # pragma: no cover - allow local testing without openenv
-    class Environment:  # type: ignore[override]
-        pass
+from openenv.core.env_server.interfaces import Environment
 
-try:
-    from ..models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
-    from .model_zoo import get_layers, get_metadata
-    from .scenarios import Scenario, sample_scenario
-    from .simulator import HardwareSimulator
-except ImportError:  # pragma: no cover - fallback for repo-root execution
-    from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
-    from server.model_zoo import get_layers, get_metadata
-    from server.scenarios import Scenario, sample_scenario
-    from server.simulator import HardwareSimulator
+from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
+
+from .model_zoo import get_layers, get_metadata
+from .scenarios import Scenario, sample_scenario
+from .simulator import HardwareSimulator
 
 
 class NeuralTunerEnvironment(Environment):
@@ -60,8 +51,6 @@ class NeuralTunerEnvironment(Environment):
         self._benchmark_count: int = 0
         self._submitted: bool = False
         self._final_reward: Optional[float] = None
-
-    # ── public interface ───────────────────────────────────────────────────
 
     def reset(
         self,
@@ -146,8 +135,6 @@ class NeuralTunerEnvironment(Environment):
         self._state.submitted = self._submitted
         self._state.final_reward = self._final_reward
         return self._state
-
-    # ── action handlers ────────────────────────────────────────────────────
 
     def _handle_profile(self, action: NeuralTunerAction) -> NeuralTunerObservation:
         err = self._require_layer(action.layer_id)
@@ -324,8 +311,6 @@ class NeuralTunerEnvironment(Environment):
             reward=reward,
             metadata=r,
         )
-
-    # ── observation builders ───────────────────────────────────────────────
 
     def _build_initial_observation(
         self,

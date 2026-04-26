@@ -1,9 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 """
 FastAPI application for the Neural Tuner Env Environment.
 
@@ -28,17 +22,10 @@ Usage:
     python -m server.app
 """
 
-try:
-    from openenv.core.env_server.http_server import create_app
-except Exception as e:
-    raise ImportError("openenv is required for the web interface. Install dependencies with '\n    uv sync\n'") from e
+from openenv.core.env_server.http_server import create_app
 
-try:
-    from ..models import NeuralTunerAction, NeuralTunerObservation
-    from .neural_tuner_env_environment import NeuralTunerEnvironment
-except ImportError:  # pragma: no cover - fallback for repo-root execution
-    from models import NeuralTunerAction, NeuralTunerObservation
-    from server.neural_tuner_env_environment import NeuralTunerEnvironment
+from models import NeuralTunerAction, NeuralTunerObservation
+from server.neural_tuner_env_environment import NeuralTunerEnvironment
 
 app = create_app(
     NeuralTunerEnvironment,

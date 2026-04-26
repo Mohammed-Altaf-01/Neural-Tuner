@@ -7,10 +7,7 @@ from typing import Dict, Optional
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 
-try:
-    from .models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
-except ImportError:  # pragma: no cover - fallback for repo-root execution
-    from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
+from models import NeuralTunerAction, NeuralTunerObservation, NeuralTunerState
 
 
 class NeuralTunerEnv(EnvClient[NeuralTunerAction, NeuralTunerObservation, NeuralTunerState]):
