@@ -11,7 +11,7 @@ pinned: false
 
 An OpenEnv-compatible RL environment that trains LLMs to optimize neural networks for Qualcomm Snapdragon edge hardware via per-layer quantization and structured pruning.
 
-> **Full write-up:** [BLOG.md](BLOG.md)  |  **Live demo:** [HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner) | **Google Collab Notebook** [Notebook](https://colab.research.google.com/drive/1cGnFxloW-3WN_I5imlkjGcWJVzZnLbcq?usp=sharing)
+> **Full write-up:** [BLOG.md](BLOG.md)  |  **Live demo:** [HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner) | **Google Collab Notebook** [Notebook](https://colab.research.google.com/drive/1cGnFxloW-3WN_I5imlkjGcWJVzZnLbcq?usp=sharing) | **W&B Results** [Logs](https://api.wandb.ai/links/mohammedaltaf4316/4czj329l)
 
 Notebook is also available in the local directory [here](neural_tuner_trl.ipynb), since was not able to train model for longer runs locally above like of Colab has been added which can be used to view full training results along with weights&biases logs.
 ---
