@@ -2,8 +2,8 @@
 
 > *Teaching an LLM to think like a AI Model optimization engineer — one layer at a time.*
 
-**[🤗 Live Demo — HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner)**  |  **[📓 Training Notebook](neural_tuner_trl.ipynb)**
-
+**[🤗 Live Demo — HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner)**
+**Google Collab Notebook** [Notebook](https://colab.research.google.com/drive/1cGnFxloW-3WN_I5imlkjGcWJVzZnLbcq?usp=sharing)
 ---
 
 ## The Problem: Manual Model Optimization Is a Bottleneck at Scale
