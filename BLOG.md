@@ -1,6 +1,6 @@
 # NeuralTuner: An RL Environment for Hardware-Aware Neural Network Optimization on Snapdragon
 
-> *Teaching an LLM to think like a Qualcomm optimization engineer — one layer at a time.*
+> *Teaching an LLM to think like a AI Model optimization engineer — one layer at a time.*
 
 **[🤗 Live Demo — HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner)**  |  **[📓 Training Notebook](neural_tuner_trl_mac.ipynb)**
 
@@ -67,15 +67,15 @@ NeuralTuner is a finite-horizon, episodic **Partially Observable MDP (POMDP)**.
 
 | Component | Definition |
 |-----------|------------|
-| **State S** | Full environment state: layer profiles (including hidden sensitivities), quant/prune assignments, profiled set, step counters, benchmark counters |
-| **Observation O** | Visible state returned to the agent; sensitivities are hidden until `profile_layer()` so `O` is a strict subset of `S` |
-| **Action A** | `{profile_layer, quantize_layer, prune_layer, revert_layer, benchmark, submit}` plus arguments |
-| **Reward R** | Episodic reward in `[0, 1]` at `submit()` with shaped intermediate signals during training |
+| **State (S)** | Full environment state: layer profiles (including hidden sensitivities), quant/prune assignments, profiled set, step counters, benchmark counters |
+| **Observation (O)** | Visible state returned to the agent; sensitivities are hidden until `profile_layer()` so `O` is a strict subset of `S` |
+| **Action (A)** | `{profile_layer, quantize_layer, prune_layer, revert_layer, benchmark, submit}` plus arguments |
+| **Reward (R)** | Episodic reward in `[0, 1]` at `submit()` with shaped intermediate signals during training |
 | **Discount gamma** | `1.0` (episodic, undiscounted objective) |
-| **Horizon H** | Max 20 steps per episode, benchmark budget capped at 5 |
-| **Policy pi** | LLM tool-calling policy (Qwen/DeepSeek family) optimized via GRPO |
+| **Horizon (H)** | Max 20 steps per episode, benchmark budget capped at 5 |
+| **Policy (π)** | LLM tool-calling policy (Qwen/DeepSeek family) optimized via GRPO |
 
-The `O ⊂ S` gap (hidden sensitivity until profiling) is the key design choice that forces exploration before exploitation.
+The `O ⊂ S` gap (hidden sensitivity until profiling) is the key design choice that *forces exploration before exploitation.*
 
 ### System Architecture
 
@@ -83,18 +83,18 @@ The `O ⊂ S` gap (hidden sensitivity until profiling) is the key design choice 
 ┌──────────────────────────────────────────────────────────────┐
 │                     NeuralTuner Runtime                      │
 │                                                              │
-│  ┌─────────────────┐   tool_call JSON   ┌────────────────┐  │
-│  │    LLM Agent    │ ◄────────────────► │  FastAPI Env   │  │
-│  │ (policy pi)     │   observation text │  Server        │  │
-│  └─────────────────┘                    └───────┬────────┘  │
+│  ┌─────────────────┐   tool_call JSON   ┌────────────────┐   │
+│  │    LLM Agent    │ ◄────────────────► │  FastAPI Env   │   │
+│  │ (policy π)      │   observation text │  Server        │   │
+│  └─────────────────┘                    └───────┬────────┘   │
 │                                                 │            │
 │                              ┌──────────────────┼─────────┐  │
 │                              │                  │         │  │
-│                     ┌────────▼──────┐  ┌────────▼──────┐  │
-│                     │   Hardware    │  │   Scenario    │  │
-│                     │   Simulator   │  │   Registry    │  │
-│                     │ (lat/mem/acc) │  │ (19 scenarios)│  │
-│                     └───────────────┘  └───────────────┘  │
+│                     ┌────────▼──────┐  ┌────────▼──────┐  │  |
+│                     │   Hardware    │  │   Scenario    │  │  |
+│                     │   Simulator   │  │   Registry    │  │  |
+│                     │ (lat/mem/acc) │  │ (19 scenarios)│  │  |
+│                     └───────────────┘  └───────────────┘  │  |
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -286,8 +286,6 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 
 ## Training Pipeline
 
-```
-
 ### How GRPO Updates the Policy
 
 GRPO (Group Relative Policy Optimization) updates the policy from grouped rollouts instead of a separate critic network.
@@ -317,26 +315,25 @@ Exploration and exploitation are not abstract here; they are induced by environm
 
 This is why benchmark budget and hidden sensitivity are core design choices: they force strategic sequencing instead of trivial brute-force probing.
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Training Pipeline                        │
-│                                                                  │
-│  Base LLM (Qwen2.5/DeepSeek-Qwen family; configurable)         │
-│       │                                                          │
-│       ▼                                                          │
-│  SFT Warm-up  ──  heuristic trajectories  ──  20 steps, LoRA   │
-│       │                                                          │
-│       ▼                                                          │
-│  GRPO Training                                                   │
+│                         Training Pipeline                       │
+│                                                                 │
+│  Base LLM (Qwen2.5/DeepSeek-Qwen family; configurable)          │
+│       │                                                         │
+│       ▼                                                         │
+│  SFT Warm-up  ──  heuristic trajectories  ──  20 steps, LoRA    │
+│       │                                                         │
+│       ▼                                                         │
+│  GRPO Training                                                  │
 │    • Curriculum: easy → medium → hard                           │
 │    • num_generations = 4  (4 rollouts per prompt)               │
 │    • max_steps = 120  (training steps)                          │
 │    • num_iterations = 1  (μ parameter — inner update passes)    │
 │    • eval every 30 steps on 5 held-out scenarios                │
 │    • W&B logging: reward, lift_vs_random, lift_vs_oracle        │
-│       │                                                          │
-│       ▼                                                          │
-│  Trained LoRA checkpoint → inference.py → 19 scenarios         │
+│       │                                                         │
+│       ▼                                                         │
+│  Trained LoRA checkpoint → inference.py → 19 scenarios          │
 └─────────────────────────────────────────────────────────────────┘
-```
 
 ### Baseline and Reference Metrics
 
@@ -434,7 +431,7 @@ This section is intentionally explicit: the project demonstrates a working RL en
 - **Short-run instability is subtle:** training can look active while still failing to beat random on proxy metrics.
 - **Environment design matters as much as optimizer choice:** hidden sensitivity and benchmark caps strongly shape behavior quality.
 
-### What Did Not Work
+### What Did Not Work (also ate up lots of my time 😭)
 
 - **Relying only on sparse terminal reward** produced weaker learning dynamics early in training.
 - **Under-powered grouped rollouts** reduced relative update quality in short runs.
@@ -447,21 +444,6 @@ This section is intentionally explicit: the project demonstrates a working RL en
 - **Action-sequence structure** (profile -> decide -> benchmark) was the strongest behavioral prior for better outcomes.
 
 The practical takeaway: for LLM tool-calling RL, environment design and reward engineering are first-order levers, not afterthoughts.
-
----
-
-## Reproducibility Notes
-
-- Core evidence bundle: `artifacts/training/submission_evidence_summary.json`
-- Sweep metrics: `artifacts/training/sweeps/metrics_seed*_steps12.json`
-- Main plots used in this post:
-  - `artifacts/plots/post_training_eval.png`
-  - `artifacts/plots/pre_training_reward_distribution.png`
-  - `artifacts/plots/heldout_policy_means.png`
-  - `artifacts/plots/sweep_lift_metrics.png`
-  - `artifacts/plots/sweep_reward_breakdown.png`
-
-These files are the source of truth for all quantitative claims in this blog.
 
 ---
 
@@ -509,18 +491,18 @@ Power profiling logs capture voltage/frequency scaling decisions made by the Sna
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                   Live Hardware RL Loop                           │
-│                                                                   │
-│  LLM Agent                                                        │
-│     │  tool calls                                                 │
-│     ▼                                                             │
-│  NeuralTuner Env  ──► AIMET compile  ──► QNN .dlc               │
-│     ▲                                        │                    │
-│     │  reward signal                         ▼                    │
-│     │                               Snapdragon device             │
+│                   Live Hardware RL Loop                          │
+│                                                                  │
+│  LLM Agent                                                       │
+│     │  tool calls                                                │
+│     ▼                                                            │
+│  NeuralTuner Env  ──► AIMET compile  ──► QNN .dlc                │
+│     ▲                                        │                   │
+│     │  reward signal                         ▼                   │
+│     │                               Snapdragon device            │
 │     │                                  (Android/Auto/XR)         │
-│     │                                        │                    │
-│     └──── sysmon + FARF + DLBC + SWC ◄──────┘                   │
+│     │                                        │                   │
+│     └──── sysmon + FARF + DLBC + SWC ◄──────┘                    │
 │           (real latency, power, sparsity utilization)            │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -534,3 +516,19 @@ This architecture would make NeuralTuner the first RL environment where LLM-driv
 - No baseline manipulation or metric tampering is used.
 - All reported values are loaded from saved artifacts in this repository.
 - "Oracle" is reported as a heuristic reference bound, not a proof of global optimality.
+- All the data used for training is a mock version of actual data, and no original content from any of Qualcomm's internal source is used. Everything is framed around a problem I thought should be solved.
+
+---
+
+## Reproducibility Notes
+
+- Core evidence bundle: `artifacts/training/submission_evidence_summary.json`
+- Sweep metrics: `artifacts/training/sweeps/metrics_seed*_steps12.json`
+- Main plots used in this post:
+  - `artifacts/plots/post_training_eval.png`
+  - `artifacts/plots/pre_training_reward_distribution.png`
+  - `artifacts/plots/heldout_policy_means.png`
+  - `artifacts/plots/sweep_lift_metrics.png`
+  - `artifacts/plots/sweep_reward_breakdown.png`
+
+These files are the source of truth for all quantitative claims in this blog.
