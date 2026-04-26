@@ -8,7 +8,7 @@
 
 ## The Problem: Manual Model Optimization Is a Bottleneck at Scale
 
-Deploying a neural network to a Qualcomm Snapdragon-powered device — a smartphone, an ADAS ECU, a laptop NPU, an XR headset — is not as simple as exporting a PyTorch model. Every production deployment goes through a hardware-specific optimization pipeline that today relies heavily on expert engineers.
+*(FYI I'm SDE at AISW team @qualcomm)* Deploying a neural network to a Qualcomm Snapdragon-powered device — a smartphone, an ADAS ECU, a laptop NPU, an XR headset — is not as simple as exporting a PyTorch model. Every production deployment goes through a hardware-specific optimization pipeline that today relies heavily on expert engineers.
 
 The workflow looks roughly like this:
 
@@ -246,6 +246,55 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 
 ![Pre-training reward distribution](artifacts/plots/pre_training_reward_distribution.png)
 *Pre-training random policy reward distribution — inception_v3 medium, n=20 seeds*
+
+### Submission Evidence Pack (Latest Artifact Snapshot)
+
+The following numbers are pulled from `artifacts/training/submission_evidence_summary.json` and the latest seed sweeps under `artifacts/training/sweeps/`.
+
+#### Core Metrics (Current Main Run)
+
+| Metric | Value |
+|--------|-------|
+| Pre-training random mean | 0.4650 |
+| Pre-training random std | 0.1883 |
+| Oracle ceiling (reference) | 0.6428 |
+| Headroom (oracle - random) | 0.1778 |
+| Training reward mean | 0.2068 |
+| Training reward last-5 mean | 0.2004 |
+| Avg tool calls per episode | 4.125 |
+| Zero-std reward step fraction | 0.0000 |
+
+#### Held-out Policy Comparison (5 Scenarios)
+
+| Policy | Mean Reward | Lift vs Held-out Random |
+|--------|-------------|-------------------------|
+| Held-out Random | 0.6183 | 0.0000 |
+| Held-out Baseline | 0.7837 | +0.1655 |
+| Held-out Heuristic | 0.6782 | +0.0599 |
+
+![Held-out policy means](artifacts/plots/heldout_policy_means.png)
+*Held-out reward means across random, baseline, and heuristic policies*
+
+#### Short Sweep Stability Snapshot (max_steps=12)
+
+| Seed | Train Reward Mean | Eval Random Mean | Lift (TrainReward - EvalRandom) | Eval Baseline Lift | Eval Heuristic Lift |
+|------|-------------------|------------------|----------------------------------|--------------------|---------------------|
+| 101 | 0.2056 | 0.5065 | -0.3009 | +0.2475 | +0.1172 |
+| 102 | 0.2133 | 0.5337 | -0.3204 | +0.2249 | +0.1419 |
+| 103 | 0.2087 | 0.4764 | -0.2677 | +0.2690 | +0.0910 |
+
+![Short sweep lift metrics](artifacts/plots/sweep_lift_metrics.png)
+*Lift metrics across latest terminal seed sweeps*
+
+![Short sweep reward breakdown](artifacts/plots/sweep_reward_breakdown.png)
+*Reward components by seed from short monitored sweeps*
+
+#### Interpretation of above metrics
+
+- Training infrastructure is stable and reproducible, with non-zero reward variance in most runs.
+- Baseline and heuristic policies consistently outperform held-out random in this environment.
+- The current trained-policy proxy metric remains below random in these short runs, which is the active optimization target.
+- All numbers above are artifact-backed and reproducible from files in this repository.
 
 ---
 

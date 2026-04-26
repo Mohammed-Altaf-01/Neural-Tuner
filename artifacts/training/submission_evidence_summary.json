@@ -1,0 +1,58 @@
+{
+  "core_eval_metrics": {
+    "pre_training_random_mean": 0.46502,
+    "pre_training_random_std": 0.1883426345785786,
+    "training_reward_mean": 0.20681015501419703,
+    "training_reward_last5_mean": 0.2004226803779602,
+    "oracle_ceiling": 0.6428,
+    "avg_tool_calls_per_episode": 4.125,
+    "frac_zero_std_steps": 0.0,
+    "lift_vs_random": -0.25820984498580296,
+    "train_split_random_mean": 0.4918368421052632,
+    "train_split_heuristic_mean": 0.5902652631578947,
+    "heldout_random_mean": 0.6182666666666666,
+    "heldout_baseline_mean": 0.78372,
+    "heldout_heuristic_mean": 0.67818,
+    "heldout_size": 5
+  },
+  "derived_core": {
+    "heldout_baseline_lift_vs_random": 0.16545333333333334,
+    "heldout_heuristic_lift_vs_random": 0.059913333333333374,
+    "headroom_oracle_minus_random": 0.17778000000000005
+  },
+  "short_sweeps_max_steps_12": [
+    {
+      "seed": "101",
+      "training_reward_mean": 0.2055833339691162,
+      "eval_random_mean": 0.506507,
+      "eval_baseline_mean": 0.75399,
+      "eval_heuristic_mean": 0.6236900000000001,
+      "lift_train_reward_vs_eval_random": -0.30092366603088383,
+      "lift_eval_baseline_vs_random": 0.247483,
+      "lift_eval_heuristic_vs_random": 0.11718300000000004,
+      "train_loss": 0.03440815924356381
+    },
+    {
+      "seed": "102",
+      "training_reward_mean": 0.21331666906674704,
+      "eval_random_mean": 0.533721,
+      "eval_baseline_mean": 0.758575,
+      "eval_heuristic_mean": 0.6756,
+      "lift_train_reward_vs_eval_random": -0.32040433093325293,
+      "lift_eval_baseline_vs_random": 0.224854,
+      "lift_eval_heuristic_vs_random": 0.14187899999999998,
+      "train_loss": -0.0011907685548067093
+    },
+    {
+      "seed": "103",
+      "training_reward_mean": 0.20873333513736725,
+      "eval_random_mean": 0.476446,
+      "eval_baseline_mean": 0.745415,
+      "eval_heuristic_mean": 0.56745,
+      "lift_train_reward_vs_eval_random": -0.26771266486263273,
+      "lift_eval_baseline_vs_random": 0.26896900000000007,
+      "lift_eval_heuristic_vs_random": 0.09100400000000003,
+      "train_loss": -0.015135690880318483
+    }
+  ]
+}

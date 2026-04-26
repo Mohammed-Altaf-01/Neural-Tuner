@@ -177,8 +177,13 @@ def main() -> int:
         "train_size": len(train_rows),
         "eval_size": len(eval_rows),
     }
+    # Keep lift metrics explicit to avoid mixing train/eval interpretations.
+    merged["lift_eval_baseline_vs_random"] = merged["eval_baseline_mean"] - merged["eval_random_mean"]
+    merged["lift_eval_heuristic_vs_random"] = merged["eval_heuristic_mean"] - merged["eval_random_mean"]
     if "training_reward_mean" in merged:
-        merged["lift_vs_random"] = merged["training_reward_mean"] - merged["eval_random_mean"]
+        merged["lift_train_reward_vs_eval_random"] = (
+            merged["training_reward_mean"] - merged["eval_random_mean"]
+        )
     write_json(Path("artifacts/training/train_eval_script_metrics.json"), merged)
 
     if wandb_key:

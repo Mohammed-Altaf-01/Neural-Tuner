@@ -1,0 +1,17 @@
+{
+  "train_skipped": false,
+  "train_runtime": 522.1596,
+  "train_samples_per_second": 0.023,
+  "train_steps_per_second": 0.023,
+  "total_flos": 0.0,
+  "train_loss": 0.03440815924356381,
+  "training_reward_mean": 0.2055833339691162,
+  "training_reward_last5_mean": 0.2055833339691162,
+  "eval_random_mean": 0.506507,
+  "eval_baseline_mean": 0.75399,
+  "eval_heuristic_mean": 0.6236900000000001,
+  "eval_oracle_ceiling": 0.6236900000000001,
+  "train_size": 80,
+  "eval_size": 20,
+  "lift_vs_random": -0.30092366603088383
+}
