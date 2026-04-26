@@ -80,7 +80,7 @@ HF_TOKEN=hf_... python inference.py --model Qwen/Qwen2.5-72B-Instruct
 
 ## Training
 
-Open and run `neural_tuner_trl_mac.ipynb` for the full pipeline:
+Open and run `neural_tuner_trl.ipynb` for the full pipeline:
 
 1. Environment smoke test
 2. Random policy baseline (n=20 seeds) and oracle ceiling
@@ -118,7 +118,7 @@ artifacts/eval/episode_metrics.csv
 │   ├── plots/                          # Training reward plots
 │   ├── eval/                           # Episode metrics and traces
 │   └── training/                       # Baseline and eval metrics JSON
-├── neural_tuner_trl_mac.ipynb          # Training notebook
+├── neural_tuner_trl.ipynb              # Training notebook
 ├── inference.py                        # Multi-scenario inference runner
 ├── rollout_eval.py                     # Baseline vs heuristic evaluator
 ├── client.py                           # OpenEnv WebSocket client
