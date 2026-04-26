@@ -8,7 +8,7 @@
 
 ## The Problem: Manual Model Optimization Is a Bottleneck at Scale
 
-*(FYI I'm SDE at AI-SW team @qualcomm)* Deploying a neural network to a Qualcomm Snapdragon-powered device — a smartphone, an ADAS ECU, a laptop NPU, an XR headset — is not as simple as exporting a PyTorch model. Every production deployment goes through a hardware-specific optimization pipeline that today relies heavily on expert engineers.
+Deploying a neural network to a Qualcomm Snapdragon-powered device — a smartphone, an ADAS ECU, a laptop NPU, an XR headset — is not as simple as exporting a PyTorch model. Every production deployment goes through a hardware-specific optimization pipeline that today relies heavily on expert engineers.
 
 The workflow looks roughly like this:
 
@@ -36,9 +36,71 @@ Quantization and pruning effects are **not independent**. On HTP hardware, they 
 
 ---
 
+## Why Reinforcement Learning? (And Why Not the Obvious Alternatives)
+
+This is an optimization problem, so the obvious question is: why not use a classical optimizer?
+
+**Why not grid search or random search?**  
+The decision space is `8^N` where `N` is number of layers (`4` quantization dtypes x `4` pruning levels). At 10 layers this is about `10^9` plans; at 50 layers it is about `10^45`. Even one plan evaluation is a full simulator pass, so exhaustive or broad sampling strategies are not practical at production scale.
+
+**Why not Bayesian optimization?**  
+Bayesian optimization is strongest in low-dimensional continuous settings. Here the space is high-dimensional and categorical, with sharp discontinuities (one bad decision on a high-sensitivity layer can dominate final reward). It also tends to optimize one fixed setup at a time, while we need a strategy that transfers across multiple models and constraint profiles.
+
+**Why not supervised learning?**  
+Supervised learning needs labels of the form `(model, constraints) -> optimal plan`. In this setting there is no authoritative optimal label dataset; even the oracle ceiling is a heuristic reference, not a certified optimum. The available supervision is reward from environment interaction.
+
+**Why RL fits this task**
+- **Partial observability**: sensitivity is hidden until `profile_layer`, so information gathering is part of the policy.
+- **Sequential decision making**: reward depends on a sequence of tool calls, not one static prediction.
+- **Delayed credit assignment**: final quality is determined at `submit()`, with intermediate shaping to guide learning.
+- **Policy transfer**: the model learns a strategy (profile -> decide -> validate), not a single static configuration.
+
+---
+
 ## Environment Design
 
 **OpenEnv-compatible FastAPI server** with a stateful, multi-step RL episode interface to any LLM agent.
+
+### MDP Formalization
+
+NeuralTuner is a finite-horizon, episodic **Partially Observable MDP (POMDP)**.
+
+| Component | Definition |
+|-----------|------------|
+| **State S** | Full environment state: layer profiles (including hidden sensitivities), quant/prune assignments, profiled set, step counters, benchmark counters |
+| **Observation O** | Visible state returned to the agent; sensitivities are hidden until `profile_layer()` so `O` is a strict subset of `S` |
+| **Action A** | `{profile_layer, quantize_layer, prune_layer, revert_layer, benchmark, submit}` plus arguments |
+| **Reward R** | Episodic reward in `[0, 1]` at `submit()` with shaped intermediate signals during training |
+| **Discount gamma** | `1.0` (episodic, undiscounted objective) |
+| **Horizon H** | Max 20 steps per episode, benchmark budget capped at 5 |
+| **Policy pi** | LLM tool-calling policy (Qwen/DeepSeek family) optimized via GRPO |
+
+The `O ⊂ S` gap (hidden sensitivity until profiling) is the key design choice that forces exploration before exploitation.
+
+### System Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     NeuralTuner Runtime                      │
+│                                                              │
+│  ┌─────────────────┐   tool_call JSON   ┌────────────────┐  │
+│  │    LLM Agent    │ ◄────────────────► │  FastAPI Env   │  │
+│  │ (policy pi)     │   observation text │  Server        │  │
+│  └─────────────────┘                    └───────┬────────┘  │
+│                                                 │            │
+│                              ┌──────────────────┼─────────┐  │
+│                              │                  │         │  │
+│                     ┌────────▼──────┐  ┌────────▼──────┐  │
+│                     │   Hardware    │  │   Scenario    │  │
+│                     │   Simulator   │  │   Registry    │  │
+│                     │ (lat/mem/acc) │  │ (19 scenarios)│  │
+│                     └───────────────┘  └───────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+At each `step()`, the environment applies the action to scenario state, calls the simulator for latency/memory/accuracy effects, and returns updated observation text and reward metadata.
+
+With the problem setting and RL rationale defined, the next sections detail exactly what the agent sees, what it can do, and how outcomes are scored.
 
 ### State Space
 
@@ -293,8 +355,43 @@ The following numbers are pulled from `artifacts/training/submission_evidence_su
 
 - Training infrastructure is stable and reproducible, with non-zero reward variance in most runs.
 - Baseline and heuristic policies consistently outperform held-out random in this environment.
-- The current trained-policy proxy metric remains below random in these short runs, which is the active optimization target.
+- The current trained-policy proxy metric (`TrainReward - EvalRandom`) remains below random in these short runs, which is the active optimization target.
 - All numbers above are artifact-backed and reproducible from files in this repository.
+
+---
+
+## Limitations and Honest Assessment
+
+The current run has `training_reward_mean = 0.2068`, below the pre-training random baseline `0.4650`. This should be interpreted carefully: training reward here comes from rollout trajectories used for learning dynamics, not a final held-out trained-policy benchmark.
+
+`frac_zero_std_steps = 0.0` indicates reward variance exists during training, so the loop is not fully collapsed. However, short sweeps still show negative `TrainReward - EvalRandom`, which means policy quality is not yet at the target for a strong "trained policy beats random" claim.
+
+### Known limitations and mitigation path
+
+| Limitation | Impact | Mitigation |
+|-----------|--------|------------|
+| Surrogate simulator instead of live device loop | Potential sim-to-real gap in latency/power behavior | Integrate AIMET + QNN telemetry loop (see Future Work) |
+| Small scenario distribution | Generalization to broader model families is unproven | Expand scenario bank and evaluate on new architectures |
+| Scalar reward summary | Trade-offs can be hidden behind a single scalar | Add Pareto-style reporting in evaluation tooling |
+| Short episode horizon and short training budgets | Slower emergence of robust long-horizon strategy | Run longer schedules on larger GPU budget |
+| Mixed proxy metrics in short sweeps | Easier to misread model progress | Keep explicit metric definitions and report held-out metrics separately |
+
+This section is intentionally explicit: the project demonstrates a working RL environment and evaluation framework, while the strongest trained-policy gains remain an active optimization goal.
+
+---
+
+## Reproducibility Notes
+
+- Core evidence bundle: `artifacts/training/submission_evidence_summary.json`
+- Sweep metrics: `artifacts/training/sweeps/metrics_seed*_steps12.json`
+- Main plots used in this post:
+  - `artifacts/plots/post_training_eval.png`
+  - `artifacts/plots/pre_training_reward_distribution.png`
+  - `artifacts/plots/heldout_policy_means.png`
+  - `artifacts/plots/sweep_lift_metrics.png`
+  - `artifacts/plots/sweep_reward_breakdown.png`
+
+These files are the source of truth for all quantitative claims in this blog.
 
 ---
 
