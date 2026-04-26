@@ -449,35 +449,26 @@ This section is intentionally explicit: the project demonstrates a working RL en
 ### What Surprised Me
 
 **The random baseline is 0.465, not near zero.**
-Before running the pre-training evaluation I expected a random policy to score around 0.1–0.2. The actual mean is 0.4650 — surprisingly high. Why? The reward has a large binary component: `memory_reward = 0.30` if the model fits in the device memory budget. For most scenarios and most random quantization plans, the memory budget is satisfied by chance — random INT8/INT4 decisions reduce memory even without intelligence. Add partial latency gains from random compression and the floor is already ~0.40 before any learning happens. This made the RL problem harder than expected — you are not competing against 0, you are competing against 0.465.
+Before running the pre-training evaluation I expected a random policy to score around 0.1–0.2. The actual mean is 0.4650. The reward has a large binary component: `memory_reward = 0.30` if the model fits in the device memory budget. For most scenarios, random INT8/INT4 decisions reduce memory even without intelligence — satisfying the binary constraint by accident. Add partial latency gains from random compression and the floor is already ~0.40 before any learning happens. This made the RL problem harder than expected: you are not competing against 0, you are competing against 0.465.
 
-**GRPO cannot learn from empty completions.**
-Without SFT warm-up, the base LLM produces completions that look like JSON objects or raw text, not `<tool_call>` format. The environment rejects these as malformed. The episode produces reward = 0. Four rollouts, reward = 0 for all, std = 0, gradient = 0. Nothing updates. The training curve flatlines. This cold-start failure is silent — no error is thrown, loss simply doesn't move. We only caught it by reading the training reward curve against the random baseline.
+**The base LLM already has hardware engineering intuition.**
+Running Qwen-2.5-72B at inference without any fine-tuning, it immediately adopted a profile-first strategy on most scenarios — profiling several layers before committing to quantization decisions. The LLM already contains reasoning patterns that approximate what the RL agent needs to learn. This makes SFT warm-up extremely efficient: a small number of heuristic demonstrations is enough to nudge the model into the right format and strategy before GRPO takes over.
 
-**`num_train_epochs=10` ran exactly 1 epoch.**
-GRPO's duration is controlled by `max_steps`, not `num_train_epochs`. Setting `num_train_epochs=10` has no effect — the trainer completes one pass over the dataset regardless. This is a documentation gap in TRL: the parameter exists and is accepted without warning, but GRPO's inner loop semantics are different from supervised training. The correct parameters are `max_steps` (total gradient updates) and `num_iterations` (μ, inner update passes per rollout batch).
-
-**The base LLM already has some engineering intuition.**
-When we ran Qwen-2.5-72B at inference without any fine-tuning (using only the system prompt), it immediately adopted a profile-first strategy on most scenarios — profiling several layers before making quantization decisions. The LLM already contains reasoning patterns that approximate what the RL agent needs to learn. This makes SFT warm-up extremely efficient: a small number of heuristic demonstrations is enough to nudge the model into the right format and strategy before GRPO takes over.
+**Reward shaping is teaching, not cheating.**
+Intermediate shaping signals (profiling incentives, benchmark spam penalties) were dismissed early as "hand-holding." In practice, they are the mechanism that solves credit assignment in a 20-step episode with a single terminal reward. Without shaping, the agent cannot distinguish which of the 20 actions caused a good outcome. Shaping injects curriculum knowledge — not answers — and the effect disappears at inference time since the model internalizes the pattern, not the signal.
 
 ---
 
-### What Did Not Work (also ate up lots of my time 😭)
+### What Did Not Work
 
-**GRPO without SFT warm-up.**
-Training reward remained at 0.20 or below for the entire 120-step run without warm-up, never exceeding the random baseline. Adding 20 SFT steps on heuristic trajectories immediately produced valid tool-call completions and non-degenerate GRPO updates.
+**GRPO on a model that cannot yet produce the right format.**
+Without SFT warm-up, the base LLM produces raw text or JSON objects, not `<tool_call>` format. The environment rejects these as malformed, all four rollouts score 0, `std=0`, gradient=0 — nothing updates. The training curve flatlines silently. This is the core cold-start failure for RL on tool-calling tasks: policy gradient requires variance in the reward signal, and a model that always fails provides none. The fix (20 SFT steps on heuristic trajectories) immediately produced valid completions and non-degenerate GRPO updates.
 
-**`num_generations=2`.**
-With only 2 rollouts per prompt, a significant fraction of training steps had `std(rewards)=0` within the group — both completions scored identically, producing zero gradient. Increasing to 4 eliminated this waste entirely (`frac_zero_std_steps=0.0`).
+**Reward components that are too easy to satisfy accidentally.**
+The binary memory reward (`0.30` for fitting within budget) was originally meant to enforce a hard constraint. In practice, nearly any random quantization plan satisfies it — which inflates the random baseline and compresses the gap GRPO has to improve. Reward components should be calibrated so that they genuinely discriminate between good and bad policies, not just provide a floor that any policy clears.
 
-**`max_completion_length=64`.**
-Initial experiments used a short completion length to reduce compute. A full NeuralTuner episode trace with 14+ tool calls requires roughly 600–800 tokens. At 64 tokens the model's output was truncated mid-tool-call, producing malformed JSON that the environment rejected. Increasing to 256 tokens resolved this.
-
-**Loading a LoRA checkpoint by string path in `GRPOTrainer`.**
-After SFT warm-up saves a LoRA adapter to disk, passing the path string directly to `GRPOTrainer(model="outputs/checkpoint")` raises `ValueError: Unrecognized model`. GRPOTrainer expects a fully instantiated model object. The fix is to load `AutoModelForCausalLM.from_pretrained(base_model)` and then `PeftModel.from_pretrained(base, adapter_path, is_trainable=True)` and pass the combined object.
-
-**`per_device_eval_batch_size=1` with `num_generations_eval=4`.**
-TRL requires `per_device_eval_batch_size` to be a multiple of `num_generations_eval`. Setting eval batch size to 1 with 4 eval generations raises `ValueError` at trainer initialization. The fix is `per_device_eval_batch_size=4`.
+**Under-budgeting episode trace length.**
+A full NeuralTuner episode with 14+ tool calls requires roughly 600–800 tokens to express. Early experiments used short completion budgets to reduce compute. Truncated tool calls produce malformed JSON the environment rejects — same failure mode as the cold-start case, but with a different root cause. Sufficient sequence budget is a prerequisite, not a tuning knob.
 
 ---
 
@@ -487,13 +478,13 @@ TRL requires `per_device_eval_batch_size` to be a multiple of `num_generations_e
 Everything else — learning rate, curriculum scheduling, eval callbacks, reward shaping — made marginal differences compared to the cold-start fix. An LLM that produces valid tool calls is a fundamentally different starting point than one that produces empty strings. If there is one thing to take away from this project: RL for tool-calling tasks requires the model to already know the tool format before RL begins.
 
 **The benchmark rate limit (5 per episode) was the most important environment design decision.**
-Without it, the optimal degenerate strategy is: quantize one layer → benchmark → revert → quantize differently → benchmark → repeat. This never requires learning a coherent strategy. Limiting benchmarks to 5 forces the agent to batch decisions and commit to a plan before checking results — exactly the behavior that requires genuine optimization reasoning. It is the single constraint that makes the exploration/exploitation trade-off real.
+Without it, the optimal degenerate strategy is: quantize one layer → benchmark → revert → quantize differently → benchmark → repeat. This never requires learning a coherent strategy. Limiting benchmarks to 5 forces the agent to batch decisions and commit to a plan before checking results — the single constraint that makes the exploration/exploitation trade-off real and rules out trivial one-step loops.
 
 **Hiding sensitivity scores at episode start made the problem worth solving with RL.**
 If sensitivity were visible from the start, a simple heuristic — sort by sensitivity, assign dtype by threshold — solves the problem without learning. The information-hiding creates the partial observability that requires the agent to develop a profiling strategy. Without it, a lookup table beats RL.
 
-**`num_generations ≥ 4` is non-negotiable for GRPO.**
-With G=2, a significant fraction of training steps are wasted. With G=4, the learning signal is dense throughout training. This is under-documented in TRL's GRPO examples but is critical in practice for environments with high reward variance.
+**Group size in GRPO determines whether learning happens at all.**
+With G=2 rollouts per prompt, a significant fraction of training steps have `std(rewards)=0` — both completions score identically, producing zero gradient. This is not a marginal efficiency loss; it is a training failure mode. G=4 eliminated zero-variance steps entirely (`frac_zero_std_steps=0.0`). For environments with high reward variance, this is a prerequisite, not an optimization.
 
 ---
 
