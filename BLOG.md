@@ -184,6 +184,23 @@ reward = latency_reward + memory_reward + accuracy_reward + efficiency_bonus
 - Leaving all layers at FP32 gives zero latency improvement → latency_reward = 0. Total ≈ 0.50 (memory fits, accuracy perfect).
 - The optimal strategy — selective mixed-precision based on sensitivity — is the only path to reward > 0.80.
 
+#### Intermediate Reward Shaping (Training Only)
+
+The base `submit()` reward is sparse because it arrives at episode end. To improve credit assignment during GRPO training, the training wrapper in `scripts/neural_tuner.py` adds intermediate shaping signals that are consumed during optimization.
+
+| Shaping signal | Amount (from wrapper logic) | Purpose |
+|---------------|------------------------------|---------|
+| Profile new layer | `+0.005` | Encourage information gathering |
+| Profile same layer again | `-0.005` | Penalize redundant probing |
+| Decision right after profiling same layer | `+0.008` | Reward profile → decide sequence |
+| Decision without immediate profiling context | `+0.002` | Allow exploration but lower reward |
+| Repeat exact same action | `-0.010` | Penalize action loops |
+| Benchmark after state change | `+0.004` | Reward validate-after-change behavior |
+| Benchmark spam (no state change) | `-0.010` (inside delta path) | Penalize no-op benchmarking |
+| Benchmark delta term | `0.05*latency_gain + 0.05*memory_gain + accuracy_term` with clamp `[-0.03, +0.03]` | Reward measurable progress while limiting instability |
+
+These shaping components are training-time helpers for optimization dynamics. The deployment objective remains the environment task outcome under episode constraints.
+
 ### Scenarios: 19 Deployment Challenges
 
 The environment includes 19 scenarios across 5 models and 3 difficulty tiers, each modelling a real-world Snapdragon deployment target:
@@ -270,6 +287,35 @@ The heuristic agent profiles first, builds a sensitivity map, then assigns dtype
 ## Training Pipeline
 
 ```
+
+### How GRPO Updates the Policy
+
+GRPO (Group Relative Policy Optimization) updates the policy from grouped rollouts instead of a separate critic network.
+
+1. **Generate grouped rollouts**  
+   For each prompt, the policy generates multiple attempts (`num_generations=4` in current runs).
+2. **Score rollouts**  
+   Each attempt gets reward from environment interaction and episode completion.
+3. **Compute relative signal within group**  
+   Rollouts are compared inside the group so better-than-group attempts receive positive update pressure.
+4. **Apply policy gradient update**  
+   The model increases probability of higher-advantage trajectories and decreases lower-advantage ones.
+
+Why this matters in our case:
+- If grouped rollouts have near-identical rewards, the update signal weakens.
+- Increasing `num_generations` improves odds of non-degenerate relative signal.
+- In the current artifact-backed run, `frac_zero_std_steps = 0.0`, indicating non-zero reward variance across training steps.
+
+### Exploration vs Exploitation in This Environment
+
+Exploration and exploitation are not abstract here; they are induced by environment design:
+
+- **Exploration pressure** comes from hidden sensitivity (`O ⊂ S`): the agent must call `profile_layer` to reveal risk.
+- **Exploitation pressure** comes from constraints and budgets: only 20 steps and at most 5 `benchmark()` calls.
+- **Good policy behavior** is profile-first then targeted quantize/prune, followed by selective benchmark/submit.
+- **Bad policy behavior** is looping tool calls or blind aggressive compression without profiling.
+
+This is why benchmark budget and hidden sensitivity are core design choices: they force strategic sequencing instead of trivial brute-force probing.
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Training Pipeline                        │
 │                                                                  │
@@ -377,6 +423,30 @@ The current run has `training_reward_mean = 0.2068`, below the pre-training rand
 | Mixed proxy metrics in short sweeps | Easier to misread model progress | Keep explicit metric definitions and report held-out metrics separately |
 
 This section is intentionally explicit: the project demonstrates a working RL environment and evaluation framework, while the strongest trained-policy gains remain an active optimization goal.
+
+---
+
+## Lessons Learned
+
+### What Surprised Me
+
+- **Random baseline is high:** the pre-training random mean is `0.4650`, so the learning target is harder than a near-zero baseline setup.
+- **Short-run instability is subtle:** training can look active while still failing to beat random on proxy metrics.
+- **Environment design matters as much as optimizer choice:** hidden sensitivity and benchmark caps strongly shape behavior quality.
+
+### What Did Not Work
+
+- **Relying only on sparse terminal reward** produced weaker learning dynamics early in training.
+- **Under-powered grouped rollouts** reduced relative update quality in short runs.
+- **Blind policy behavior** (acting without profiling) consistently underperformed profile-first trajectories.
+
+### What Mattered Most
+
+- **Reward-shaping guardrails** in the wrapper improved training signal density.
+- **Sufficient generation diversity** (`num_generations=4`) helped avoid degenerate zero-variance updates in current runs.
+- **Action-sequence structure** (profile -> decide -> benchmark) was the strongest behavioral prior for better outcomes.
+
+The practical takeaway: for LLM tool-calling RL, environment design and reward engineering are first-order levers, not afterthoughts.
 
 ---
 
