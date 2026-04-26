@@ -1,12 +1,3 @@
----
-title: Neural Tuner Env Environment Server
-emoji: 🥉
-colorFrom: purple
-colorTo: pink
-sdk: docker
-pinned: false
----
-
 # NeuralTuner: An RL Environment for Hardware-Aware Neural Network Optimization on Snapdragon
 
 > *Teaching an LLM to think like a Qualcomm optimization engineer — one layer at a time.*

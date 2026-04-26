@@ -15,4 +15,4 @@ notes.md
 .hf_cache
 .pytest_cache
 outputs/
-wandbartifacts/plots
+wandb
