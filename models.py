@@ -16,24 +16,8 @@ NeuralTunerState carries lightweight episode metadata for the client.
 
 from typing import Literal, Optional
 
+from openenv.core.env_server.types import Action, Observation, State
 from pydantic import Field
-
-try:
-    from openenv.core.env_server.types import Action, Observation, State
-except ImportError:  # pragma: no cover - lets local tests run without openenv installed
-    from pydantic import BaseModel
-
-    class Action(BaseModel):
-        pass
-
-    class Observation(BaseModel):
-        done: bool = False
-        reward: float = 0.0
-        metadata: dict = Field(default_factory=dict)
-
-    class State(BaseModel):
-        episode_id: str = ""
-        step_count: int = 0
 
 
 class NeuralTunerAction(Action):
@@ -77,3 +61,4 @@ class NeuralTunerState(State):
     submitted: bool = Field(default=False, description="Whether the episode has been submitted")
     benchmark_count: int = Field(default=0, description="Number of benchmarks used so far")
     final_reward: Optional[float] = Field(default=None, description="Final reward after submission")
+    episode_id: str = Field(default="", description="Episode ID")

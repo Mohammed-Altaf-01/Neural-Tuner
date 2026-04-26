@@ -127,13 +127,13 @@ def main() -> int:
         output_dir=args.output_dir,
         run_name=f"neural_tuner_grpo_script_{args.seed}",
         max_steps=args.max_steps,
-        learning_rate=1e-6,
+        learning_rate=8e-7,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=1,
         warmup_steps=2,
         max_completion_length=256,
-        num_generations=4,
-        generation_batch_size=4,
+        num_generations=8,
+        generation_batch_size=8,
         temperature=0.9,
         top_p=0.95,
         generation_kwargs={"do_sample": True, "renormalize_logits": True, "remove_invalid_values": True},
@@ -181,9 +181,7 @@ def main() -> int:
     merged["lift_eval_baseline_vs_random"] = merged["eval_baseline_mean"] - merged["eval_random_mean"]
     merged["lift_eval_heuristic_vs_random"] = merged["eval_heuristic_mean"] - merged["eval_random_mean"]
     if "training_reward_mean" in merged:
-        merged["lift_train_reward_vs_eval_random"] = (
-            merged["training_reward_mean"] - merged["eval_random_mean"]
-        )
+        merged["lift_train_reward_vs_eval_random"] = merged["training_reward_mean"] - merged["eval_random_mean"]
     write_json(Path("artifacts/training/train_eval_script_metrics.json"), merged)
 
     if wandb_key:

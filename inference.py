@@ -19,15 +19,9 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-try:
-    from models import NeuralTunerAction
-    from server.neural_tuner_env_environment import NeuralTunerEnvironment
-    from server.scenarios import EASY_SCENARIOS, HARD_SCENARIOS, MEDIUM_SCENARIOS, Scenario
-except ImportError as _e:
-    print(f"Import error: {_e}. Run from the project root with dependencies installed.", file=sys.stderr)
-    sys.exit(1)
-
-# ── Configuration ──────────────────────────────────────────────────────────────
+from models import NeuralTunerAction
+from server.neural_tuner_env_environment import NeuralTunerEnvironment
+from server.scenarios import EASY_SCENARIOS, HARD_SCENARIOS, MEDIUM_SCENARIOS, Scenario
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
@@ -60,8 +54,6 @@ Strategy:
 5. Call submit() once all constraints are met."""
 
 
-# ── Response parsing ───────────────────────────────────────────────────────────
-
 def _parse_tool_call(text: str) -> Optional[Dict[str, Any]]:
     """Extract tool call from model output.
 
@@ -90,14 +82,10 @@ def _parse_tool_call(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-# ── Logging helpers ────────────────────────────────────────────────────────────
-
 def _log_step(step: int, name: str, args: Dict, reward: float, done: bool) -> None:
     args_str = "  ".join(f"{k}={v}" for k, v in args.items() if v is not None)
     print(f"  [{step:02d}] {name}({args_str})  reward={reward:.4f}  done={done}", flush=True)
 
-
-# ── Single episode ─────────────────────────────────────────────────────────────
 
 def run_episode(client: OpenAI, scenario: Scenario, model: str = MODEL_NAME, max_steps: int = MAX_STEPS) -> float:
     """Run one full episode for *scenario* and return the final reward."""
@@ -108,9 +96,12 @@ def run_episode(client: OpenAI, scenario: Scenario, model: str = MODEL_NAME, max
     print(f"\n{'─'*60}", flush=True)
     print(f"Scenario : {scenario.name}  ({scenario.difficulty})", flush=True)
     print(f"Model    : {scenario.model_id}", flush=True)
-    print(f"Constraints: latency≤{scenario.constraints.latency_budget_ms}ms  "
-          f"memory≤{scenario.constraints.memory_budget_mb}MB  "
-          f"accuracy≥{scenario.constraints.min_accuracy_retention}", flush=True)
+    print(
+        f"Constraints: latency≤{scenario.constraints.latency_budget_ms}ms  "
+        f"memory≤{scenario.constraints.memory_budget_mb}MB  "
+        f"accuracy≥{scenario.constraints.min_accuracy_retention}",
+        flush=True,
+    )
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -136,10 +127,9 @@ def run_episode(client: OpenAI, scenario: Scenario, model: str = MODEL_NAME, max
         if tool_call is None:
             print(f"  [{step:02d}] Could not parse tool call from: {response_text[:120]!r}", flush=True)
             messages.append({"role": "assistant", "content": response_text})
-            messages.append({
-                "role": "user",
-                "content": "Invalid response. Emit exactly one <tool_call>...</tool_call> block."
-            })
+            messages.append(
+                {"role": "user", "content": "Invalid response. Emit exactly one <tool_call>...</tool_call> block."}
+            )
             continue
 
         name = tool_call.get("name", "")
@@ -173,13 +163,14 @@ def run_episode(client: OpenAI, scenario: Scenario, model: str = MODEL_NAME, max
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run NeuralTuner inference across all scenarios.")
     parser.add_argument("--model", default=MODEL_NAME, help="HF model ID (default: Qwen/Qwen2.5-72B-Instruct)")
-    parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None,
-                        help="Restrict to one difficulty tier.")
-    parser.add_argument("--scenario", default=None,
-                        help="Run a single scenario by name (e.g. inception_v3_medium).")
+    parser.add_argument(
+        "--difficulty", choices=["easy", "medium", "hard"], default=None, help="Restrict to one difficulty tier."
+    )
+    parser.add_argument("--scenario", default=None, help="Run a single scenario by name (e.g. inception_v3_medium).")
     parser.add_argument("--max-steps", type=int, default=MAX_STEPS)
     args = parser.parse_args()
 

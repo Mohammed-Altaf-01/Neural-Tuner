@@ -78,7 +78,7 @@ class SimulationResult:
     quantized_latency_ms: float
     quantized_memory_mb: float
     estimated_accuracy_retention: float
-    latency_improvement: float         # fraction saved vs baseline
+    latency_improvement: float  # fraction saved vs baseline
     memory_fits: bool
     accuracy_ok: bool
     meets_latency: bool
@@ -163,9 +163,7 @@ class HardwareSimulator:
         else:
             accuracy_reward = 0.0
 
-        efficiency_bonus = (
-            0.10 if (result.meets_latency and result.memory_fits and result.accuracy_ok) else 0.0
-        )
+        efficiency_bonus = 0.10 if (result.meets_latency and result.memory_fits and result.accuracy_ok) else 0.0
 
         return round(min(latency_reward + memory_reward + accuracy_reward + efficiency_bonus, 1.0), 4)
 

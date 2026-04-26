@@ -59,6 +59,8 @@ The server exposes:
 | `/reset` | POST | Start a new episode |
 | `/step` | POST | Execute an action |
 | `/state` | GET | Current episode state |
+| `/metadata` | GET | Model and scenario metadata |
+| `/health` | GET | Server health check |
 | `/schema` | GET | Action and observation schemas |
 | `/ws` | WebSocket | Persistent session |
 
@@ -121,7 +123,8 @@ artifacts/eval/episode_metrics.csv
 │   └── model_zoo.py                    # Layer profiles for 5 neural networks
 ├── scripts/
 │   ├── neural_tuner.py                 # TRL-compatible OpenEnv wrapper
-│   └── run_training_eval.py            # Post-training evaluation sweep
+│   ├── run_training_eval.py            # Post-training evaluation sweep
+│   └── training_utils.py              # Scenario splitting and JSONL helpers
 ├── tests/                              # pytest suite
 ├── artifacts/
 │   ├── plots/                          # Training reward plots
@@ -152,6 +155,7 @@ Covers:
 - Invalid layer ID and missing argument handling
 - Episode terminal state after `submit()`
 - Training metrics schema validation
+- Scenario train/eval split correctness (no overlap, deterministic)
 
 ---
 
