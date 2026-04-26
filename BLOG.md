@@ -2,7 +2,7 @@
 
 > *Teaching an LLM to think like a AI Model optimization engineer — one layer at a time.*
 
-**[🤗 Live Demo — HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner)**  |  **[📓 Training Notebook](neural_tuner_trl_mac.ipynb)**
+**[🤗 Live Demo — HuggingFace Space](https://huggingface.co/spaces/Mohammed-Altaf/Neural-Tuner)**  |  **[📓 Training Notebook](neural_tuner_trl.ipynb)**
 
 ---
 
